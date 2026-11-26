@@ -221,3 +221,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Idealist database files: keep legacy data out of the repository
+*.TEX
+*.tex
+*.TRM
+*.trm
+*.OCC
+*.occ
+*.ROT
+*.rot
+*.DIR
+*.dir

@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Idealist Database Reader</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+/* VOICE: calm archival tool – precise, quiet, trustworthy with old data
+   IDEA: the card-index drawer: every record a card, every field a labelled line
+   PICTURE: the open drawer itself – list of cards beside the card pulled out, with field fill-rates drawn as bars
+   COLOUR and TYPE: white paper, oak-gall ink band, sealing-wax red accent; Spectral headings, Plex Sans body, Plex Mono ids
+   LAYOUT: dark band (file, stats, search) → tabs → list + card, table, fields, file */
+:root{color-scheme:light dark;--bg:light-dark(#ffffff,#16131a);--ink:light-dark(#1d1a22,#ece8f0);--mute:light-dark(#625c6b,#a69fb0);--line:light-dark(#e4dfe8,#332d3a);--band:light-dark(#2a2131,#0d0b10);--bandink:#f3eef6;--red:light-dark(#b3261e,#ff6b5e);--card:light-dark(#faf8fb,#1e1a23);--hi:light-dark(#ffe9a8,#5a4a12);--bar:light-dark(#d9cfe0,#4a3f55)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "IBM Plex Sans",system-ui,sans-serif;overflow-x:clip}
+h1,h2,h3{font-family:Spectral,Georgia,serif;line-height:1.08;text-wrap:balance;margin:0}
+h1{font-size:clamp(32px,4.2vw,48px)}h2{font-size:28px}h3{font-size:20px}
+a{color:var(--red)}code,.id{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.88em}
+.band{padding:clamp(22px,3.2vw,48px) max(5vw,16px)}
+.wrap{max-width:1240px;margin:auto}
+.top{background:var(--band);color:var(--bandink)}
+.top p{color:#cfc6d6;margin:.5em 0 0;max-width:62ch}
+.tophead{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;align-items:flex-end}
+.stats{display:flex;gap:24px;flex-wrap:wrap;margin-top:18px}
+.stats b{display:block;font:700 28px/1 Spectral,serif;color:#fff}.stats span{font-size:13px;color:#cfc6d6}
+input,select,button,textarea{font:inherit;font-size:16px;border-radius:8px}
+input[type=search],input[type=text],select,textarea{border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:8px 12px;min-height:44px;width:100%}
+.top input[type=search]{background:#fff;color:#1d1a22;border-color:#4a3f52}
+.top select{background:#3a2f42;color:var(--bandink);border-color:#4a3f52}
+button{border:1px solid var(--line);background:var(--card);color:var(--ink);padding:8px 14px;cursor:pointer;min-height:44px}
+.top button{background:transparent;color:var(--bandink);border-color:#5a4f62}
+.top button.pri{background:var(--bandink);color:var(--band);border-color:var(--bandink);font-weight:600}
+button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible,textarea:focus-visible{outline:3px solid var(--red);outline-offset:2px}
+.searchrow{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr) minmax(0,2fr);gap:8px;margin-top:20px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.chip{min-height:36px;padding:4px 12px;border-radius:99px;font-size:14px;background:var(--red)!important;color:#fff!important;border-color:var(--red)!important}
+nav.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-top:20px}
+nav.tabs a{color:var(--bandink);text-decoration:none;padding:9px 14px;border-radius:8px;border:1px solid #4a3f52;min-height:44px;display:inline-flex;align-items:center}
+nav.tabs a[aria-current]{background:var(--bandink);color:var(--band);border-color:var(--bandink)}
+.landing{max-width:760px;margin:auto;text-align:center}
+.drop{border:2px dashed var(--line);border-radius:16px;padding:clamp(28px,6vw,64px) 20px;margin-top:24px}
+.drop.over{border-color:var(--red);background:var(--card)}
+.drop p{color:var(--mute);max-width:none}
+.main{display:grid;grid-template-columns:minmax(0,4fr) minmax(0,8fr);gap:clamp(18px,3vw,40px)}
+.listhead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.listhead small,.mute{color:var(--mute);font-size:14px}
+.list{border-top:1px solid var(--line);max-height:80vh;overflow:auto}
+.item{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);border-radius:0;background:none;padding:10px 8px}
+.item[aria-current=true]{background:var(--card);box-shadow:inset 3px 0 0 var(--red)}
+.item b{font-family:Spectral,serif;font-size:18px}
+.item small{display:block;color:var(--mute);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .snip{font-size:13px}
+mark{background:var(--hi);color:inherit;border-radius:2px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:clamp(16px,2.4vw,28px)}
+.card .meta{color:var(--mute);font-size:14px;margin-top:6px}
+.banner{background:var(--hi);padding:10px 14px;border-radius:8px;margin:12px 0;font-size:15px}
+.fl{display:grid;grid-template-columns:minmax(120px,1fr) minmax(0,3fr);gap:2px 18px;margin-top:18px}
+.fl>div{display:contents}
+.fl dt{color:var(--mute);font-size:14px;padding:7px 0;border-top:1px solid var(--line)}
+.fl dd{margin:0;padding:7px 0;border-top:1px solid var(--line);white-space:pre-wrap;overflow-wrap:anywhere}
+.fl dt .id{display:block;font-size:11px;opacity:.75}
+.versions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.versions button{min-height:36px;font-size:14px;padding:4px 10px}
+.versions button[aria-pressed=true]{border-color:var(--red);color:var(--red)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{border-bottom:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+th{position:sticky;top:0;background:var(--bg);white-space:nowrap}
+th button{border:0;background:none;padding:0;min-height:auto;font-weight:600;font-size:14px}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+tbody tr{cursor:pointer}tbody tr:hover{background:var(--card)}
+.tablewrap{overflow:auto;max-height:78vh;border-top:1px solid var(--line)}
+.cell{max-width:28ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fillbar{height:8px;background:var(--line);border-radius:4px;width:120px;display:inline-block;vertical-align:middle}
+.fillbar i{display:block;height:100%;background:var(--red);border-radius:4px}
+.fields td input[type=text]{min-height:38px;padding:4px 8px;font-size:15px}
+.fields td input[type=checkbox],.fields td input[type=radio]{width:20px;height:20px}
+.tools{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+pre{overflow-x:auto;background:var(--card);border:1px solid var(--line);padding:12px;border-radius:8px;font-size:13px}
+.doc p,.doc li{max-width:72ch}.doc h3{margin-top:26px}
+#views>section{display:none}#views>section.on{display:block}
+.toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
+.toast.on{opacity:1}
+dialog{border:1px solid var(--line);border-radius:14px;background:var(--bg);color:var(--ink);max-width:640px;width:92vw}
+.hidden{display:none!important}
+@media(max-width:900px){.main{grid-template-columns:minmax(0,1fr)}.list{max-height:44vh}.searchrow{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:600px){.fl{grid-template-columns:minmax(0,1fr)}.fl dd{border-top:0;padding-top:0}table{font-size:13px}.fillbar{width:60px}}
+@media(prefers-reduced-motion:no-preference){.card{animation:in .25s ease-out}@keyframes in{from{opacity:0;transform:translateY(6px)}}}
+</style></head><body>
+<header class="band top"><div class="wrap">
+ <div class="tophead">
+  <div><h1 id="title">Idealist database reader</h1>
+  <p id="sub">Opens <code style="color:#fff">.TEX</code> files from Blackwell's Idealist and turns them into searchable records. Files are read in your browser, and nothing is uploaded.</p></div>
+  <div class="tools"><button class="pri" id="openbtn">Open files</button></div>
+ </div>
+ <input type="file" id="file" accept=".tex,.TEX,.def,.DEF" multiple class="hidden">
+ <div id="loaded" class="hidden">
+  <div class="stats" id="stats"></div>
+  <div class="searchrow">
+   <input type="search" id="q" placeholder="Search records…  Use &quot;quotes&quot; for phrases" aria-label="Search">
+   <select id="scope" aria-label="Search in"></select>
+   <select id="dt" aria-label="Document type"></select>
+  </div>
+  <div class="chips" id="chips"></div>
+  <nav class="tabs"><a href="#browse" data-t="browse">Browse</a><a href="#table" data-t="table">Table</a><a href="#fields" data-t="fields">Fields</a><a href="#file" data-t="file">File</a></nav>
+ </div>
+</div></header>
+
+<div id="views">
+<section id="v-landing" class="band on"><div class="landing">
+ <h2>Open an Idealist database</h2>
+ <p class="mute">Pick the database's <code>.TEX</code> file, which holds the records. Add its <code>.DEF</code> file to get the real field names. The CMH project's IDEALIST.DEF is built in, and any .DEF you load is remembered in this browser. The index files (.TRM, .OCC, .ROT, .DIR) aren't needed.</p>
+ <div class="drop" id="drop"><h3>Drop a .TEX file here</h3><p>…optionally with a .DEF file, or use “Open files” above.</p></div>
+</div></section>
+
+<section id="v-browse" class="band"><div class="wrap main">
+ <div>
+  <div class="listhead"><h2 style="font-size:24px">Records</h2><small id="count"></small></div>
+  <div class="tools" style="margin-top:0">
+   <select id="sort" aria-label="Sort" style="flex:1 1 160px"></select>
+   <label class="mute" style="display:flex;align-items:center;gap:8px;flex:1 1 180px"><input type="checkbox" id="old" style="width:20px;height:20px"> Show superseded copies</label>
+  </div>
+  <div class="list" id="list" role="listbox" aria-label="Records"></div>
+ </div>
+ <div id="rec"></div>
+</div></section>
+
+<section id="v-table" class="band"><div class="wrap">
+ <div class="listhead"><h2 style="font-size:24px">Table</h2><small id="tcount"></small></div>
+ <p class="mute">Columns are the fields ticked “In table” on the Fields tab. Click a heading to sort and a row to open the record.</p>
+ <div class="tools"><button id="copycsv">Copy table as CSV</button><button id="copyjson">Copy records as JSON</button></div>
+ <div class="tablewrap"><table id="tbl"></table></div>
+</div></section>
+
+<section id="v-fields" class="band"><div class="wrap">
+ <h2 style="font-size:24px">Fields</h2>
+ <p class="mute" id="fieldsnote"></p>
+ <div class="tools"><button id="copylabels">Copy labels as JSON</button><button id="pastelabels">Paste labels…</button><button id="resetlabels">Reset labels</button><button id="defbtn">Load a .DEF file</button><button id="defreset" class="hidden">Forget loaded .DEF files</button></div>
+ <div style="overflow-x:auto"><table class="fields" id="ftbl"></table></div>
+</div></section>
+
+<section id="v-file" class="band"><div class="wrap doc" id="fileinfo"></div></section>
+</div>
+
+<dialog id="dlg"><form method="dialog" id="dlgform"><h3>Paste labels</h3><p class="mute">Paste JSON copied from “Copy labels as JSON”: an object mapping field ids such as <code>"0x1d4b"</code> to names.</p><textarea id="dlgtext" rows="8"></textarea><div class="tools"><button value="ok" class="pri">Apply</button><button value="cancel">Cancel</button></div></form></dialog>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+{
+const $=s=>document.getElementById(s);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const h4=n=>'0x'+n.toString(16).padStart(4,'0');
+// The low byte of a type code is a letter: W wrapped text, T text, L line of text, # number, I integer, D date.
+const TCLASS={W:'text',T:'text',D:'text',N:'text',L:'literal','#':'decimal',I:'integer'};
+const TNAME={W:'wrapped text',T:'text',D:'date',N:'name',L:'line of text','#':'number',I:'integer'};
+const KNOWN=new Proxy({},{get:(_,k)=>TCLASS[String.fromCharCode(+k&0xff)]});
+const tname=typ=>TNAME[String.fromCharCode(typ&0xff)]||h4(typ);
+const dec=new TextDecoder('windows-1252');
+const store={get(k,d){try{const v=localStorage.getItem('idl:'+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem('idl:'+k,JSON.stringify(v))}catch(e){}}};
+
+/* ---------- definition file (IDEALIST.DEF) ---------- */
+const BUILTIN_DEF="[records]\nAddress Surname FirstName Title Dept Address Town State Zip Country Tel Fax \nArticle Author Address Title Date Journal Volume Page Abstract \nbhmwrksv Title Paprdate Type_Nat Name Master Wrckdate Passage Report Vessel Cargo \nBook Author Title Date City Publisher Contents \nBurialReg Parish Date Name Cause Reference Links\nChapter Author ChapterTitl ChapterNo Editor BookTitle Date City Publisher Contents \nChwarden Parish Date Name Text Reference Links \nDebts Case Membrane County Plaintiff ResidenceP CountyP OccupationP Defendant ResidenceD CountyD ResidenceD2 CountyD2 OccupationD AmtL AmtS AmtD Details \nDefault Text \nDiary Author Date Name Details Parish Reference Links \nDictionary Term Definition SeeAlso \nGazetteer Place_ID_GAZ MODNAME County Country_GAZ GridX GridY Borough Borough_1st_Date Borough_Source Mint VAL_1334 History_GAZ Market_Town_C1600 Market_Town_Source See_GAZ M1 M1_DAYS M1_No_Of_Days M1_1st_Recorded M1_Term_Used M1_Prescriptive_Held_By M1_Charter_Year M1_Charter_Date M1_Grantor M1_Type_Grantor M1_Grantee M1_Grantee_Type M1_Source M1_Confirmation_Year M1_Confirmation_Date M1_Confirmation_From M1_Confirmation_To M1_Confirmation_Source M1_Notes M2 M2_DAYS M2_No_Of_Days M2_1st_Recorded M2_Term_Used M2_Prescriptive_Owner M2_Year_Of_Charter M2_Date_Of_Charter M2_Grantor M2_Grantor_Type M2_Grantee M2_Type_Grantee M2_Source M2_Confirm_Year M2_Confirm_Date M2_Confirm_From M2_Confirm_To M2_Confirm_Source M2_Notes M3 M3_DAYS M3_No_Of_Days M3_First_Recorded M3_Term_Used M3_P_Held_By Year_Of_Charter_M3 Date_Of_Charter_M3 M3_Grantor Grantor_Type_M3 M3_Grantee Grantee_Type_M3 M3_Source M3_Confirmtn_Year M3_Confirmtn_Date M3_Confirmtn_From M3_Confirmtn_To M3_Confirmtn_Source M3_Notes FAIR FAIR1 Fair1_Days_Held Fair1_Feast Fair1_Feast_Date Fair1_Duration_In_Days Fair1_Term_Used Fair1_1st_Reference F1_Owner_Prescriptive Fair1_Charter_Year Fair1_Charter_Date Fair1_Grantor Fair1_Grantor_Type Fair1_Grantee Fair1_Grantee_Type Fair1_Source FAIR1_CONF_Year FAIR1_CONF_Date FAIR1_CONF_From FAIR1_CONF_To FAIR1_CONF_Source Fair1_Notes FAIR2 Fair2_Days_Held Fair2_Feast Fair2_Feast_Date Fair2_Duration Fair2_Term_Used Fair2_1st_Reference F2_Prescript_Held_By Fair2_Charter_Year Fair2_Charter_Date Fair2_Grantor Fair2_Grantor_Type Fair2_Grantee Fair2_Grantee_Type Fair2_Source FAIR2_CONF_Year FAIR2_CONF_Date FAIR2_CONF_From FAIR2_CONF_To FAIR2_CONF_Source Fair2_Notes FAIR3 Fair3_Days_Held Fair3_Feast Fair3_Feast_Date Fair3_Days_Duration Fair3_Term_Used Fair3_1st_Reference F3_Prescript_Owner Charter_Year_Fair3 Charter_Date_Fair3 Fair3_Grantor Fair3_Grantor_Type Fair3_Grantee Fair3_Type_Grantee Fair3_Source FAIR3_CONF_Year FAIR3_CONF_Date FAIR3_CONF_From FAIR3_CONF_To FAIR3_CONF_Source Fair3_Notes Harrison Notes \nNewspaper Title PubPlace Date Report Parish Reference Links\n\n[fields]\nAbstract Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nAddress Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nAmtD Font=\"Arial\" Points=10 Type=\"Number\"\nAmtL Font=\"Arial\" Points=10 Type=\"Integer\"\nAmtS Font=\"Arial\" Points=10 Type=\"Integer\"\nAuthor Font=\"Arial\" Points=10 Type=\"Name\"\nBookTitle Font=\"Arial\" Points=10 Type=\"Text\"\nBorough Font=\"Arial\" Format=\"Y\" MaxChars=1 Points=10 Type=\"Line of text\" Uppercase\nBorough_1st_Date Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nBorough_Source Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nCargo Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nCase Font=\"Arial\" Points=10 Type=\"Integer\"\nCause Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nChapterNo Font=\"Arial\" Points=10 Type=\"Text\"\nChapterTitl Font=\"Arial\" Points=10 Type=\"Text\"\nCharter_Date_Fair3 Font=\"Arial\" MaxChars=10 Points=10 Type=\"Line of text\"\nCharter_Year_Fair3 Font=\"Arial\" MaxChars=4 Points=10 Type=\"Number\"\nCity Font=\"Arial\" Points=10 Type=\"Text\"\nContents Font=\"Arial\" Points=10 Type=\"Text\"\nCountry Font=\"Arial\" Points=10 Type=\"Text\"\nCountry_GAZ Font=\"Arial\" InitialCaps MaxChars=8 Points=10 Type=\"Line of text\"\nCounty Font=\"Arial\" MaxChars=20 Points=10 Type=\"Line of text\"\nCountyD Font=\"Arial\" Points=10 Type=\"Line of text\"\nCountyD2 Font=\"Arial\" Points=10 Type=\"Line of text\"\nCountyP Font=\"Arial\" Points=10 Type=\"Line of text\"\nDate_Of_Charter_M3 Font=\"Arial\" MaxChars=10 Points=10 Type=\"Line of text\"\nDefendant Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nDefinition Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nDept Font=\"Arial\" Points=10 Type=\"Text\"\nDetails Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nEditor Font=\"Arial\" Points=10 Type=\"Name\"\nF1_Owner_Prescriptive Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nF2_Prescript_Held_By Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nF3_Prescript_Owner Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFAIR Font=\"Arial\" Format=\"Y\" MaxChars=1 Points=10 Type=\"Line of text\" Uppercase\nFAIR1 Font=\"Arial\" Points=10 Type=\"Line of text\"\nFair1_1st_Reference Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair1_Charter_Date Font=\"Arial\" MaxChars=10 Points=10 Type=\"Line of text\"\nFair1_Charter_Year Font=\"Arial\" MaxChars=4 Points=10 Type=\"Number\"\nFAIR1_CONF_Date Font=\"Arial\" MaxChars=10 Points=10 Type=\"Line of text\"\nFAIR1_CONF_From Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFAIR1_CONF_Source Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFAIR1_CONF_To Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFAIR1_CONF_Year Font=\"Arial\" MaxChars=4 Points=10 Type=\"Number\"\nFair1_Days_Held Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair1_Duration_In_Days Font=\"Arial\" MaxChars=2 Points=10 Type=\"Number\"\nFair1_Feast Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair1_Feast_Date Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair1_Grantee Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair1_Grantee_Type Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair1_Grantor Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair1_Grantor_Type Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair1_Notes Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair1_Source Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair1_Term_Used Font=\"Arial\" Italic Points=10 Type=\"Wrapped text\"\nFAIR2 Font=\"Arial\" Points=10 Type=\"Line of text\"\nFair2_1st_Reference Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair2_Charter_Date Font=\"Arial\" MaxChars=10 Points=10 Type=\"Line of text\"\nFair2_Charter_Year Font=\"Arial\" MaxChars=4 Points=10 Type=\"Number\"\nFAIR2_CONF_Date Font=\"Arial\" MaxChars=10 Points=10 Type=\"Line of text\"\nFAIR2_CONF_From Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFAIR2_CONF_Source Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFAIR2_CONF_To Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFAIR2_CONF_Year Font=\"Arial\" MaxChars=4 Points=10 Type=\"Number\"\nFair2_Days_Held Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair2_Duration Font=\"Arial\" MaxChars=2 Points=10 Type=\"Number\"\nFair2_Feast Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair2_Feast_Date Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair2_Grantee Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair2_Grantee_Type Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair2_Grantor Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair2_Grantor_Type Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair2_Notes Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair2_Source Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair2_Term_Used Font=\"Arial\" Italic Points=10 Type=\"Wrapped text\"\nFAIR3 Font=\"Arial\" Points=10 Type=\"Line of text\"\nFair3_1st_Reference Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFAIR3_CONF_Date Font=\"Arial\" MaxChars=10 Points=10 Type=\"Line of text\"\nFAIR3_CONF_From Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFAIR3_CONF_Source Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFAIR3_CONF_To Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFAIR3_CONF_Year Font=\"Arial\" MaxChars=4 Points=10 Type=\"Number\"\nFair3_Days_Duration Font=\"Arial\" MaxChars=2 Points=10 Type=\"Number\"\nFair3_Days_Held Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair3_Feast Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair3_Feast_Date Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair3_Grantee Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair3_Grantor Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair3_Grantor_Type Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair3_Notes Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair3_Source Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFair3_Term_Used Font=\"Arial\" Italic Points=10 Type=\"Wrapped text\"\nFair3_Type_Grantee Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFax Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nFirstName Font=\"Arial\" Points=10 Type=\"Text\"\nGrantee_Type_M3 Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nGrantor_Type_M3 Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nGridX Font=\"Arial\" MaxChars=12 Points=10 Type=\"Integer\"\nGridY Font=\"Arial\" MaxChars=12 Points=10 Type=\"Integer\"\nHarrison Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nHistory Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nHistory_GAZ Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nIntro Bold Color=8388608 Font=\"Times New Roman\" Italic Points=16 Type=\"Text\"\nJournal Font=\"Arial\" Points=10 Type=\"Text\"\nLinks Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM1 Font=\"Arial\" Points=10 Type=\"Line of text\"\nM1_1st_Recorded Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM1_Charter_Date Font=\"Arial\" MaxChars=10 Points=10 Type=\"Line of text\"\nM1_Charter_Year Font=\"Arial\" MaxChars=4 Points=10 Type=\"Number\"\nM1_Confirmation_Date Font=\"Arial\" Points=10 Type=\"Line of text\"\nM1_Confirmation_From Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM1_Confirmation_Source Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM1_Confirmation_To Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM1_Confirmation_Year Font=\"Arial\" MaxChars=4 Points=10 Type=\"Number\"\nM1_DAYS Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM1_Grantee Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM1_Grantee_Type Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM1_Grantor Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM1_No_Of_Days Font=\"Arial\" MaxChars=2 Points=10 Type=\"Number\"\nM1_Notes Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM1_Prescriptive_Held_By Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM1_Source Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM1_Term_Used Font=\"Arial\" Italic Points=10 Type=\"Wrapped text\"\nM1_Type_Grantor Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM2 Font=\"Arial\" Points=10 Type=\"Line of text\"\nM2_1st_Recorded Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM2_Confirm_Date Font=\"Arial\" MaxChars=10 Points=10 Type=\"Line of text\"\nM2_Confirm_From Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM2_Confirm_Source Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM2_Confirm_To Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM2_Confirm_Year Font=\"Arial\" MaxChars=4 Points=10 Type=\"Number\"\nM2_Date_Of_Charter Font=\"Arial\" MaxChars=10 Points=10 Type=\"Line of text\"\nM2_DAYS Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM2_Grantee Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM2_Grantor Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM2_Grantor_Type Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM2_No_Of_Days Font=\"Arial\" MaxChars=2 Points=10 Type=\"Number\"\nM2_Notes Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM2_Prescriptive_Owner Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM2_Source Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM2_Term_Used Font=\"Arial\" Italic Points=10 Type=\"Wrapped text\"\nM2_Type_Grantee Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM2_Year_Of_Charter Font=\"Arial\" MaxChars=4 Points=10 Type=\"Number\"\nM3 Font=\"Arial\" Points=10 Type=\"Line of text\"\nM3_Confirmtn_Date Font=\"Arial\" MaxChars=10 Points=10 Type=\"Line of text\"\nM3_Confirmtn_From Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM3_Confirmtn_Source Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM3_Confirmtn_To Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM3_Confirmtn_Year Font=\"Arial\" MaxChars=4 Points=10 Type=\"Number\"\nM3_DAYS Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM3_First_Recorded Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM3_Grantee Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM3_Grantor Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM3_No_Of_Days Font=\"Arial\" MaxChars=2 Points=10 Type=\"Number\"\nM3_Notes Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM3_P_Held_By Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM3_Source Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nM3_Term_Used Font=\"Arial\" Italic Points=10 Type=\"Wrapped text\"\nMarket Font=\"Arial\" Points=10 Type=\"Line of text\"\nMarket_Town_C1600 Font=\"Arial\" Format=\"Y\" MaxChars=1 Points=10 Type=\"Line of text\" Uppercase\nMarket_Town_Source Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nMaster Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nMembrane Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nMint Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nMODNAME Font=\"Arial\" Points=10 Type=\"Wrapped text\" Uppercase\nName Font=\"Bookman\" Italic Points=12 Type=\"Wrapped text\"\nNationality Font=\"Arial\" Points=10 Type=\"Line of text\"\nNotes Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nOccupationD Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nOccupationP Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nPage Font=\"Arial\" Points=10 Type=\"Text\"\nPaprdate Font=\"Arial\" Points=10 Type=\"Date\"\nParish Font=\"Arial\" Points=10 Type=\"Text\"\nPassage Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nPicture Bold Font=\"System\" Points=12 Type=\"Graphic\"\nPlace_ID Font=\"Arial\" MaxChars=6 Points=10 Type=\"Number\"\nPlace_ID_GAZ Font=\"Arial\" Points=10 Type=\"Integer\"\nPlace_Name Bold Font=\"Arial\" Points=12 Type=\"Line of text\"\nPlaintiff Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nPublisher Font=\"Arial\" Points=10 Type=\"Text\"\nPubPlace Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nReference Font=\"Arial\" Mandatory Points=10 Type=\"Wrapped text\"\nReport Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nResidenceD Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nResidenceD2 Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nResidenceP Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nSee Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nSee_GAZ Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nSeeAlso Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nSource Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nState Font=\"Arial\" Points=10 Type=\"Text\"\nSurname Font=\"Arial\" Points=10 Type=\"Text\"\nTel Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nTerm Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nText Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nTitle Font=\"Bookman\" Points=11 Type=\"Wrapped text\"\nTown Font=\"Arial\" Points=10 Type=\"Text\"\nType_Nat Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nVAL_1334 Font=\"Arial\" MaxChars=12 Points=10 Type=\"Number\"\nVessel Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nVolume Font=\"Arial\" Points=10 Type=\"Number\"\nWrckdate Font=\"Arial\" Points=10 Type=\"Wrapped text\"\nYear_Of_Charter_M3 Font=\"Arial\" MaxChars=4 Points=10 Type=\"Number\"\nYearOfBirth Font=\"Arial\" Points=10 Type=\"Integer\"\nZip Font=\"Arial\" Points=10 Type=\"Text\"\n";
+// Field ids are a hash of the field name: upper-case, then h=(h<<1)^char, 16 bits. One- and two-letter names are stored as the characters themselves.
+function hashName(n){const s=n.toUpperCase();if(s.length<=2)return s.charCodeAt(0)|((s.charCodeAt(1)||0)<<8);let h=0;for(const c of s)h=((h<<1)^c.charCodeAt(0))&0xffff;return h}
+function parseDEF(txt,name){const def={name,types:{},fields:{}};let sec='';
+  for(const line of txt.split(/\r?\n/)){const l=line.trim();if(!l)continue;const m=l.match(/^\[(.+)\]$/);if(m){sec=m[1].toLowerCase();continue}
+    const n=l.split(/\s+/)[0];
+    if(sec==='records')def.types[n]=l.split(/\s+/).slice(1);
+    else if(sec==='fields'){const a={};(l.slice(n.length).match(/\w+(="[^"]*"|=\S+)?/g)||[]).forEach(x=>{const i=x.indexOf('=');a[i<0?x:x.slice(0,i)]=i<0?true:x.slice(i+1).replace(/"/g,'')});def.fields[n]=a}}
+  return Object.keys(def.types).length?def:null}
+const BUILT=parseDEF(BUILTIN_DEF,'IDEALIST.DEF (built in, CMH project)');
+let DEFS=(store.get('defs',[])||[]).map(x=>parseDEF(x.text,x.name)).filter(Boolean);
+const allDefs=()=>[...DEFS.slice().reverse(),BUILT];
+const defDesc=a=>!a?'':[a.Type,a.MaxChars&&'max '+a.MaxChars+' chars',a.Format&&'format “'+a.Format+'”',a.Uppercase&&'upper case',a.InitialCaps&&'initial caps',a.Mandatory&&'mandatory'].filter(Boolean).join(' · ');
+
+/* ---------- parser ---------- */
+function parseTEX(buf){
+  const u=new Uint8Array(buf),v=new DataView(buf),N=u.length,recs=[];
+  const head={magic:dec.decode(u.subarray(0,4)),date:dec.decode(u.subarray(8,14)).replace(/\0.*$/,'')};
+  // A record header is valid if its self-offset matches and its fields walk cleanly to a field-id 0 terminator inside the record.
+  const isHdr=q=>{if(q+14>N||v.getUint16(q,true)!==(q&0xffff))return false;const L=v.getUint16(q+2,true),fl=v.getUint16(q+4,true),nf=v.getUint16(q+6,true);
+    if((fl!==0&&fl!==0x8000)||L<14||q+L>N||nf<1||nf>4000)return false;
+    let p=q+8;const end=q+L;while(p+6<=end){const ln=v.getUint16(p+4,true);if(p+6+ln>end)return false;if(!v.getUint16(p,true))return true;p+=6+ln}return false};
+  let q=64;while(q<N-14&&!isHdr(q))q++;
+  const first=q;
+  // stop-word list sits between the header and the first record
+  const sw=dec.decode(u.subarray(64,first)).split(/\r?\n|\s+/).filter(w=>/^[a-z]+$/i.test(w));
+  let skipped=0;
+  while(q<N-14){
+    if(!isHdr(q)){q++;skipped++;continue}
+    const L=v.getUint16(q+2,true),flag=v.getUint16(q+4,true),end=Math.min(q+L,N),f=[];let p=q+8,doctype='';
+    while(p+6<=end){const tag=v.getUint16(p,true),typ=v.getUint16(p+2,true),ln=v.getUint16(p+4,true),b=u.subarray(p+6,Math.min(p+6+ln,end));
+      if(!tag){doctype=dec.decode(b).replace(/\0.*$/s,'');break}
+      f.push({id:h4(tag),typ,val:value(typ,b)});p+=6+ln}
+    recs.push({off:q,len:L,cur:flag===0,doctype:doctype||'(untyped)',f});q+=L}
+  return {head,stop:sw,recs,skipped,size:N}}
+function value(typ,b){
+  if(!b.length)return '';
+  if((typ===0x0323||typ===0x0749)&&b.length===6){const n=(b[1]<<16)|(b[2]<<8)|b[3];return typ===0x0323?n/100:n}
+  const s=dec.decode(b);
+  if(KNOWN[typ]==='text'||KNOWN[typ]==='literal'||/^[\x09\x0a\x0d\x0e\x20-\xff]*$/.test(s))
+    return s.replace(/ ?\x0e/g,' ').replace(/\r\n/g,'\n').replace(/[\x00-\x08\x0b-\x1f]/g,'');
+  return '⟨'+[...b].map(x=>x.toString(16).padStart(2,'0')).join(' ')+'⟩'}
+const fmt=v=>typeof v==='number'?(Number.isInteger(v)?String(v):v.toFixed(2)):v;
+
+/* ---------- state ---------- */
+let DB=null,DT='',S=null,sel=null,view=null,FILTERS=[],tsort={id:null,dir:1};
+function schemaFor(dt){
+  const rs=DB.recs.filter(r=>r.doctype===dt),cur=rs.filter(r=>r.cur),base=cur.length?cur:rs,order=new Map();
+  rs.forEach(r=>r.f.forEach((x,i)=>{if(!order.has(x.id))order.set(x.id,{id:x.id,typ:x.typ,pos:i,fill:0,vals:new Map(),len:0})}));
+  base.forEach(r=>r.f.forEach(x=>{const o=order.get(x.id);if(x.val!==''){o.fill++;o.len+=String(x.val).length;if(o.vals.size<200)o.vals.set(x.val,(o.vals.get(x.val)||0)+1)}}));
+  const fields=[...order.values()].sort((a,b)=>a.pos-b.pos);fields.forEach((o,i)=>{o.n=i+1;o.avg=o.fill?o.len/o.fill:0});
+  // match the definition file: by name hash first, by position if the hashes don't fit
+  const def=allDefs().find(d=>Object.keys(d.types).some(k=>k.toLowerCase()===dt.toLowerCase()))||null;const dkey=def&&Object.keys(def.types).find(k=>k.toLowerCase()===dt.toLowerCase());const names=dkey?def.types[dkey]:[];const dmap={};let match=null;
+  if(names.length){const byHash=new Map(names.map(n=>[h4(hashName(n)),n]));let hit=0;fields.forEach(o=>{if(byHash.has(o.id)){dmap[o.id]=byHash.get(o.id);hit++}});match={by:'name',hit,of:fields.length,def:names.length};
+    if(hit<fields.length/2&&names.length===fields.length){fields.forEach((o,i)=>dmap[o.id]=names[i]);match={by:'position',hit:fields.length,of:fields.length,def:names.length}}}
+  const saved=store.get('cfg:'+dt+':'+fields.length,null);
+  const auto=fields.filter(o=>KNOWN[o.typ]!=='decimal'&&KNOWN[o.typ]!=='integer'&&o.fill>=base.length*.9&&o.avg<60).sort((a,b)=>b.vals.size-a.vals.size);
+  const title=(auto[0]&&auto[0].id)||fields[0]?.id;
+  const subAuto=fields.filter(o=>o.id!==title&&KNOWN[o.typ]!=='integer'&&KNOWN[o.typ]!=='decimal'&&o.avg<60&&o.vals.size>1).sort((a,b)=>b.fill-a.fill)[0];
+  const cfg=Object.assign({labels:{},title,sub:(subAuto&&subAuto.id)||null,table:fields.filter(o=>o.fill).slice(0,6).map(o=>o.id)},saved||{});
+  return {dt,fields,byId:new Map(fields.map(o=>[o.id,o])),cfg,total:base.length,dmap,match,dkey,def}}
+const label=id=>S.cfg.labels[id]||(S.dmap[id]&&S.dmap[id].replace(/_/g,' '))||('Field '+(S.byId.get(id)?.n??'?'));
+const save=()=>store.set('cfg:'+S.dt+':'+S.fields.length,S.cfg);
+
+function open(buf,name){
+  let db;try{db=parseTEX(buf)}catch(e){toast('Could not read that file');return}
+  if(!db.recs.length){toast('No Idealist records found in '+name);return}
+  DB=db;DB.name=name;
+  DB.recs.forEach((r,i)=>{r.i=i;r.m={};r.f.forEach(x=>{if(x.val!=='')r.m[x.id]=x.val});r.blob=Object.values(r.m).join(' • ');r.blobL=r.blob.toLowerCase()});
+  const dts=[...new Set(DB.recs.map(r=>r.doctype))];
+  $('dt').innerHTML=dts.map(d=>`<option>${esc(d)}</option>`).join('');$('dt').classList.toggle('hidden',dts.length<2);
+  const cur=DB.recs.filter(r=>r.cur).length;
+  $('stats').innerHTML=[[cur,'current records'],[DB.recs.length-cur,'superseded copies'],[dts.length,'document type'+(dts.length>1?'s':'')]].map(([b,s])=>`<div><b>${b}</b><span>${s}</span></div>`).join('')+`<div><b id="nf"></b><span>fields</span></div>`;
+  $('title').textContent=name;$('sub').textContent=`${(DB.size/1024).toFixed(0)} KB · created ${DB.head.date||'date unknown'} · document type ${dts.join(', ')}`;
+  $('loaded').classList.remove('hidden');
+  setDT(dts.sort((a,b)=>DB.recs.filter(r=>r.doctype===b).length-DB.recs.filter(r=>r.doctype===a).length)[0]);
+  if(!location.hash||location.hash==='#landing')location.hash='browse';else route();
+  renderFile()}
+function setDT(dt){DT=dt;$('dt').value=dt;S=schemaFor(dt);DB.byTitle=new Map();DB.recs.forEach(r=>{if(r.doctype!==dt)return;const k=r.doctype+'\u0001'+titleOf(r);(DB.byTitle.get(k)||DB.byTitle.set(k,[]).get(k)).push(r)});FILTERS=[];sel=null;view=null;tsort={id:null,dir:1};
+  $('nf').textContent=S.fields.length;
+  $('scope').innerHTML='<option value="">In all fields</option>'+S.fields.filter(o=>o.fill).map(o=>`<option value="${o.id}">${esc(label(o.id))}</option>`).join('');
+  $('sort').innerHTML=`<option value="title">Sort by ${esc(titles().map(label).join(' + '))}</option><option value="file">File order</option>`+S.fields.filter(o=>o.fill&&!titles().includes(o.id)).map(o=>`<option value="${o.id}">Sort by ${esc(label(o.id))}</option>`).join('');
+  refresh();renderFields()}
+
+/* ---------- search & list ---------- */
+const terms=()=>{const q=$('q').value.toLowerCase().trim(),o=[];q.replace(/"([^"]+)"|(\S+)/g,(_,a,b)=>o.push(a||b));return o};
+const rx=w=>new RegExp('('+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','ig');
+const hl=(s,ts)=>{let h=esc(s);ts.forEach(w=>h=h.replace(rx(esc(w)),'<mark>$1</mark>'));return h};
+const titles=()=>[].concat(S.cfg.title).filter(id=>S.byId.has(id));
+const titleOf=r=>titles().map(id=>String(r.m[id]??'').trim()).filter(Boolean).join(' ')||'(untitled)';
+let ROWS=[];
+function refresh(){
+  const ts=terms(),scope=$('scope').value,old=$('old').checked;
+  let rs=DB.recs.filter(r=>r.doctype===DT&&(r.cur||old));
+  if(ts.length)rs=rs.filter(r=>{const t=scope?String(r.m[scope]??'').toLowerCase():r.blobL;return ts.every(w=>t.includes(w))});
+  FILTERS.forEach(([id,v])=>rs=rs.filter(r=>String(r.m[id]??'')===v));
+  const s=$('sort').value||'title',cmp=(a,b)=>{const x=a.m[s],y=b.m[s];if(x===undefined)return y===undefined?0:1;if(y===undefined)return -1;return typeof x==='number'&&typeof y==='number'?x-y:String(x).localeCompare(String(y),undefined,{numeric:true})};
+  rs.sort(s==='file'?(a,b)=>a.off-b.off:s==='title'?(a,b)=>titleOf(a).localeCompare(titleOf(b),undefined,{numeric:true})||a.off-b.off:cmp);
+  ROWS=rs;
+  $('count').textContent=`${rs.length} shown`;
+  $('chips').innerHTML=FILTERS.map(([id,v],i)=>`<button class="chip" data-x="${i}" title="Remove filter">${esc(label(id))}: ${esc(v)} ✕</button>`).join('');
+  const sub=S.cfg.sub&&!titles().includes(S.cfg.sub)&&S.byId.get(S.cfg.sub);
+  $('list').innerHTML=rs.length?rs.slice(0,1500).map(r=>{
+    let snip='';if(ts.length){const src=scope?String(r.m[scope]??''):r.blob,i=src.toLowerCase().indexOf(ts[0]);if(i>=0&&!titles().includes(scope))snip=(i>40?'…':'')+src.slice(Math.max(0,i-40),i+70)+'…'}
+    return `<button class="item" role="option" data-i="${r.i}" aria-current="${sel===r}"><b>${hl(titleOf(r),ts)}</b><small>${r.cur?'':'superseded · '}${esc(sub&&r.m[sub.id]!==undefined?fmt(r.m[sub.id]):'')}</small>${snip?`<div class="snip">${hl(snip,ts)}</div>`:''}</button>`}).join('')+(rs.length>1500?`<p class="mute">Showing first 1,500. Refine the search to see more.</p>`:''):'<p class="mute" style="padding:24px 0">No records match. Try fewer words or remove a filter.</p>';
+  if(!rs.includes(sel)){sel=null;view=null;if(rs.length&&window.innerWidth>900)sel=rs[0]}
+  showRec();renderTable()}
+
+// Superseded copies carry no link to their current record, so match them on title plus at least half of their filled values.
+const sim=(a,b)=>{const ka=Object.keys(a.m),kb=Object.keys(b.m);if(!ka.length||!kb.length)return 0;let s=0;ka.forEach(k=>{if(b.m[k]===a.m[k])s++});return s/Math.max(ka.length,kb.length)};
+function versionsOf(r){const same=(DB.byTitle.get(r.doctype+'\u0001'+titleOf(r))||[]).filter(x=>x!==r&&x.cur!==r.cur&&sim(x,r)>=.5);
+  let cur=r.cur?r:same.sort((a,b)=>sim(b,r)-sim(a,r))[0];if(!cur)return[r];
+  const old=(DB.byTitle.get(r.doctype+'\u0001'+titleOf(r))||[]).filter(x=>!x.cur&&sim(x,cur)>=.5);return [...old,cur].sort((a,b)=>a.off-b.off)}
+function showRec(){
+  const box=$('rec');if(!sel){box.innerHTML=ROWS.length?'<p class="mute">Select a record.</p>':'';return}
+  const r=view||sel,ts=terms(),vs=versionsOf(sel),hideEmpty=store.get('hideEmpty',true);
+  const rows=r.f.filter(x=>!hideEmpty||x.val!=='').map(x=>`<div><dt>${esc(label(x.id))}<span class="id">${x.id} · ${tname(x.typ)}</span></dt><dd>${x.val===''?'<span class="mute">—</span>':hl(fmt(x.val),ts)}${x.val!==''&&String(x.val).length<60&&(S.byId.get(x.id)?.vals.size||999)<100?` <button data-flt="${x.id}" style="min-height:28px;padding:0 8px;font-size:12px">filter</button>`:''}</dd></div>`).join('');
+  box.innerHTML=`<article class="card"><h2>${hl(titleOf(r),ts)}</h2>
+   <div class="meta">${esc(r.doctype)} · file offset ${r.off} · ${r.len} bytes · ${r.f.filter(x=>x.val!=='').length} of ${r.f.length} fields filled</div>
+   ${r.cur?'':'<div class="banner">This is a superseded copy (flag 0x8000). Idealist kept it in the file after the record was re-saved or deleted.</div>'}
+   ${vs.length>1?`<div class="meta">${vs.length} stored copies with this title, in file order:</div><div class="versions">${vs.map((x,j)=>`<button data-v="${x.i}" aria-pressed="${x===r}">${j+1}${x.cur?' (current)':''}</button>`).join('')}</div>`:''}
+   <label class="mute" style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="hideEmpty" ${hideEmpty?'checked':''} style="width:20px;height:20px"> Hide empty fields</label>
+   <dl class="fl">${rows}</dl></article>`;
+  box.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{view=DB.recs[+b.dataset.v];showRec()});
+  box.querySelectorAll('[data-flt]').forEach(b=>b.onclick=()=>{const id=b.dataset.flt;FILTERS.push([id,String(r.m[id])]);refresh()});
+  $('hideEmpty').onchange=e=>{store.set('hideEmpty',e.target.checked);showRec()}}
+
+/* ---------- table ---------- */
+function renderTable(){
+  const cols=S.cfg.table.filter(id=>S.byId.has(id));let rs=ROWS.slice();
+  if(tsort.id){const id=tsort.id;rs.sort((a,b)=>{const x=a.m[id],y=b.m[id];if(x===undefined)return 1;if(y===undefined)return -1;return(typeof x==='number'?x-y:String(x).localeCompare(String(y),undefined,{numeric:true}))*tsort.dir})}
+  $('tcount').textContent=`${rs.length} records × ${cols.length} columns`;
+  const num=id=>['decimal','integer'].includes(KNOWN[S.byId.get(id).typ]);
+  $('tbl').innerHTML=`<thead><tr>${cols.map(id=>`<th class="${num(id)?'num':''}"><button data-s="${id}">${esc(label(id))}${tsort.id===id?(tsort.dir>0?' ▲':' ▼'):''}</button></th>`).join('')}</tr></thead><tbody>${rs.slice(0,2000).map(r=>`<tr data-i="${r.i}">${cols.map(id=>`<td class="${num(id)?'num':'cell'}" title="${esc(r.m[id]??'')}">${esc(fmt(r.m[id]??''))}</td>`).join('')}</tr>`).join('')}</tbody>`;
+  TROWS=rs}
+let TROWS=[];
+$('tbl').addEventListener('click',e=>{const s=e.target.closest('[data-s]');if(s){const id=s.dataset.s;tsort=tsort.id===id?{id,dir:-tsort.dir}:{id,dir:1};renderTable();return}
+  const tr=e.target.closest('tr[data-i]');if(tr){sel=DB.recs[+tr.dataset.i];view=null;location.hash='browse'}});
+const csv=()=>{const cols=S.cfg.table.filter(id=>S.byId.has(id)),q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';return[cols.map(id=>q(label(id))).join(','),...TROWS.map(r=>cols.map(id=>q(fmt(r.m[id]??''))).join(','))].join('\n')};
+async function copy(t,msg){try{await navigator.clipboard.writeText(t);toast(msg)}catch(e){toast('Copy was blocked by the browser')}}
+$('copycsv').onclick=()=>copy(csv(),`Copied ${TROWS.length} rows`);
+$('copyjson').onclick=()=>copy(JSON.stringify(TROWS.map(r=>({offset:r.off,current:r.cur,doctype:r.doctype,fields:Object.fromEntries(Object.entries(r.m).map(([k,v])=>[S.cfg.labels[k]||label(k),v]))})),null,1),`Copied ${TROWS.length} records`);
+
+/* ---------- fields ---------- */
+function renderFields(){
+  const mt=S.match;$('defreset').classList.toggle('hidden',!DEFS.length);
+  $('fieldsnote').innerHTML=`${S.fields.length} fields in document type “${esc(S.dt)}”, in the order Idealist stores them. Fill rates count the ${S.total} current records. `+(mt?`Names come from <b>${esc(S.def.name)}</b>: ${mt.hit} of ${mt.of} fields matched ${mt.by==='name'?'by name':'by position (the name hashes didn’t match)'}.`:`None of the loaded definition files has a “${esc(S.dt)}” record type, so the fields are numbered. Load the .DEF file that came with this database, or type names below.`)+` Names you type override the definition and are saved in this browser.`;
+  $('ftbl').innerHTML=`<thead><tr><th>#</th><th>Id</th><th>Type</th><th>Name</th><th>Definition</th><th>Filled</th><th>Distinct</th><th>Example</th><th>In title</th><th>Subtitle</th><th>In table</th></tr></thead><tbody>${S.fields.map(o=>{const ex=[...o.vals.entries()].sort((a,b)=>b[1]-a[1])[0];return `<tr><td class="num">${o.n}</td><td class="id">${o.id}</td><td>${tname(o.typ)}</td><td><input type="text" data-l="${o.id}" value="${esc(S.cfg.labels[o.id]||'')}" placeholder="${esc(label(o.id))}" aria-label="Name for ${o.id}"></td><td style="font-size:13px">${S.dmap[o.id]?`<code>${esc(S.dmap[o.id])}</code><br><span class="mute">${esc(defDesc(S.def.fields[S.dmap[o.id]]))}</span>`:'<span class="mute">—</span>'}</td><td style="white-space:nowrap"><span class="fillbar"><i style="width:${S.total?100*o.fill/S.total:0}%"></i></span> ${o.fill}</td><td class="num">${o.vals.size>=200?'200+':o.vals.size}</td><td class="cell" style="max-width:24ch">${ex?esc(fmt(ex[0])):'<span class="mute">empty</span>'}</td><td><input type="checkbox" data-t="${o.id}" ${titles().includes(o.id)?'checked':''} aria-label="Part of title"></td><td><input type="radio" name="st" data-st="${o.id}" ${S.cfg.sub===o.id?'checked':''} aria-label="Use as subtitle"></td><td><input type="checkbox" data-c="${o.id}" ${S.cfg.table.includes(o.id)?'checked':''} aria-label="Show in table"></td></tr>`}).join('')}</tbody>`}
+$('ftbl').addEventListener('change',e=>{const t=e.target;
+  if(t.dataset.l){const v=t.value.trim();if(v)S.cfg.labels[t.dataset.l]=v;else delete S.cfg.labels[t.dataset.l];save();setDTkeep()}
+  if(t.dataset.t){const id=t.dataset.t;let a=titles();a=t.checked?[...a,id]:a.filter(x=>x!==id);if(!a.length){t.checked=true;toast('Keep at least one title field');return}S.cfg.title=a.sort((x,y)=>S.byId.get(x).pos-S.byId.get(y).pos);save();setDTkeep()}
+  if(t.dataset.st){S.cfg.sub=t.dataset.st;save();setDTkeep()}
+  if(t.dataset.c){const id=t.dataset.c;S.cfg.table=t.checked?[...S.cfg.table,id].sort((a,b)=>S.byId.get(a).pos-S.byId.get(b).pos):S.cfg.table.filter(x=>x!==id);save();renderTable()}});
+function setDTkeep(){const keepSel=sel,f=FILTERS,sc=$('scope').value;setDT(DT);FILTERS=f;$('scope').value=sc;sel=keepSel;refresh()}
+$('defbtn').onclick=()=>$('file').click();
+$('defreset').onclick=()=>{DEFS=[];store.set('defs',[]);if(DB){setDT(DT);renderFile()}toast('Loaded definitions forgotten')};
+$('copylabels').onclick=()=>{const o={};S.fields.forEach(f=>{const l=label(f.id);if(!/^Field \d+$/.test(l))o[f.id]=l});copy(JSON.stringify(o,null,1),'Copied labels')};
+$('pastelabels').onclick=()=>{$('dlgtext').value='';$('dlg').showModal()};
+$('dlg').addEventListener('close',()=>{if($('dlg').returnValue!=='ok')return;try{const o=JSON.parse($('dlgtext').value);Object.entries(o).forEach(([k,v])=>{if(S.byId.has(k)&&typeof v==='string')S.cfg.labels[k]=v});save();setDTkeep();toast('Labels applied')}catch(e){toast('That isn’t valid JSON')}});
+$('resetlabels').onclick=()=>{S.cfg.labels={};save();setDTkeep();toast('Labels reset')};
+
+/* ---------- file info ---------- */
+function renderFile(){
+  const dts={};DB.recs.forEach(r=>{const d=dts[r.doctype]=dts[r.doctype]||{c:0,o:0};r.cur?d.c++:d.o++});
+  $('fileinfo').innerHTML=`<h2>${esc(DB.name)}</h2>
+  <p>Magic <code>${esc(DB.head.magic)}</code>, date stamp <code>${esc(DB.head.date)}</code>, ${DB.size.toLocaleString()} bytes, ${DB.recs.length} stored records${DB.skipped?`, ${DB.skipped} bytes not recognised as records`:''}.</p>
+  <table style="max-width:560px"><thead><tr><th>Document type</th><th class="num">Current</th><th class="num">Superseded</th></tr></thead><tbody>${Object.entries(dts).map(([k,v])=>`<tr><td>${esc(k)}</td><td class="num">${v.c}</td><td class="num">${v.o}</td></tr>`).join('')}</tbody></table>
+  <h3>Stop words (${DB.stop.length})</h3><p class="mute">Words Idealist leaves out of its index: ${esc(DB.stop.join(', '))||'none found'}.</p>
+  <h3>How the format works</h3>
+  <ul>
+  <li><b>Header</b>: 64 bytes beginning with the magic <code>iWin</code>, then a date stamp. A CRLF-separated stop-word list follows, then the records, packed back to back.</li>
+  <li><b>Record header</b> (8 bytes, little-endian): <code>u16</code> low 16 bits of the record's own file offset (a consistency check), <code>u16</code> length, <code>u16</code> flags (<code>0x8000</code> = superseded), <code>u16</code> number of fields plus one.</li>
+  <li><b>Fields</b>: <code>u16 field-id, u16 type, u16 length, bytes</code>, repeated, ending with field-id 0, whose value is the document-type name. Every record carries its type's full template, empty fields included.</li>
+  <li><b>Types</b>: the low byte of the type code is a letter: <code>W</code> wrapped text (<code>0x2057</code>), <code>T</code> text (<code>0x2054</code>), <code>L</code> line of text (<code>0x004C</code>), <code>#</code> number (<code>0x0323</code>), <code>I</code> integer (<code>0x0749</code>). Numbers are 6 bytes: <code>05</code>, a 24-bit big-endian value (decimals ×100), <code>00 00</code>. Any type this reader doesn't recognise is shown as text if printable, otherwise as hex.</li>
+  <li><b>Text</b> is Windows-1252 with CRLF line breaks. Byte <code>0E</code> marks a soft wrap and is removed.</li>
+  <li><b>Re-saving a record</b> keeps the old copy, flagged <code>0x8000</code>. “Show superseded copies” reveals them. Copies aren't linked to their current record, so the reader pairs them by matching title and at least half their filled values.</li>
+  <li><b>Field ids</b> are a hash of the field name in the definition file: upper-case the name, then for each character <code>h = (h &lt;&lt; 1) XOR char</code>, kept to 16 bits. Names of one or two characters are stored as the characters themselves (<code>M1</code> → <code>0x314D</code>).</li>
+  <li><b>Definition files</b> (<code>.DEF</code>) are plain text: either one <code>IDEALIST.DEF</code> shared by a whole installation, or one per database such as <code>Regulars.def</code>. <code>[records]</code> lists each record type with its fields in order. <code>[fields]</code> gives each field's display font, data type (Wrapped text = <code>0x2057</code>, Text = <code>0x2054</code>, Line of text = <code>0x004C</code>, Number = <code>0x0323</code>, Integer = <code>0x0749</code>) and entry rules such as MaxChars, Format and Uppercase.</li>
+  <li><b>Other files</b>: <code>.ROT</code> maps record handles to TEX offsets, <code>.TRM</code> is a B-tree of term + field-id keys, <code>.OCC</code> holds posting lists and <code>.DIR</code> is a hash directory. None of them are needed to read the records. This reader searches the decoded text directly.</li>
+  </ul>
+  <p class="mute">Reverse-engineered from a 1995 Idealist project; untested on other versions.</p>
+  <h3>Definition files</h3>${allDefs().map(D=>`<p><b>${esc(D.name)}</b>${S&&S.def===D?' (used for this database)':''}<br><span class="mute">${Object.keys(D.types).length} record types: ${Object.entries(D.types).map(([k,v])=>esc(k)+' ('+v.length+')').join(', ')}. ${Object.keys(D.fields).length} field definitions.</span></p>`).join('')}`}
+
+/* ---------- plumbing ---------- */
+function toast(t){const el=$('toast');el.textContent=t;el.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove('on'),2200)}
+function route(){let v=(location.hash||'#landing').slice(1);if(!DB||!['browse','table','fields','file'].includes(v))v=DB?'browse':'landing';
+  document.querySelectorAll('#views>section').forEach(s=>s.classList.toggle('on',s.id==='v-'+v));
+  document.querySelectorAll('nav.tabs a').forEach(a=>a.toggleAttribute('aria-current',a.dataset.t===v));
+  if(v==='browse'&&DB){refresh();const b=$('list').querySelector('[aria-current=true]');b&&b.scrollIntoView({block:'nearest'})}}
+window.addEventListener('hashchange',route);
+async function openFiles(list){const fs=[...list];
+  for(const f of fs.filter(f=>/\.def$/i.test(f.name))){const txt=await f.text(),d=parseDEF(txt,f.name);if(d){DEFS=DEFS.filter(x=>x.name!==f.name);DEFS.push(d);const st=(store.get('defs',[])||[]).filter(x=>x.name!==f.name);st.push({name:f.name,text:txt});store.set('defs',st);toast('Definition loaded: '+f.name+' ('+Object.keys(d.types).length+' record types)')}else toast(f.name+' is not an Idealist definition file')}
+  const tex=fs.find(f=>!/\.def$/i.test(f.name));
+  if(tex){try{open(await tex.arrayBuffer(),tex.name)}catch(e){toast('Could not read that file')}}else if(DB){setDT(DT);renderFile()}}
+$('openbtn').onclick=()=>$('file').click();
+$('file').onchange=e=>{openFiles(e.target.files);e.target.value=''};
+const dz=$('drop');dz.ondragover=e=>{e.preventDefault();dz.classList.add('over')};dz.ondragleave=()=>dz.classList.remove('over');
+dz.ondrop=e=>{e.preventDefault();e.stopPropagation();dz.classList.remove('over');openFiles(e.dataTransfer.files)};
+document.body.addEventListener('dragover',e=>e.preventDefault());document.body.addEventListener('drop',e=>{e.preventDefault();openFiles(e.dataTransfer.files)});
+let tmr;$('q').addEventListener('input',()=>{clearTimeout(tmr);tmr=setTimeout(refresh,150)});
+$('scope').onchange=refresh;$('sort').onchange=refresh;$('old').onchange=refresh;$('dt').onchange=e=>setDT(e.target.value);
+$('chips').addEventListener('click',e=>{const b=e.target.closest('[data-x]');if(b){FILTERS.splice(+b.dataset.x,1);refresh()}});
+$('list').addEventListener('click',e=>{const b=e.target.closest('.item');if(!b)return;sel=DB.recs[+b.dataset.i];view=null;document.querySelectorAll('.item').forEach(x=>x.setAttribute('aria-current',x===b));showRec();if(window.innerWidth<=900)$('rec').scrollIntoView({behavior:'smooth'})});
+$('list').addEventListener('keydown',e=>{if(!['ArrowDown','ArrowUp'].includes(e.key)||!sel)return;e.preventDefault();const r=ROWS[ROWS.indexOf(sel)+(e.key==='ArrowDown'?1:-1)];if(!r)return;sel=r;view=null;refresh();const b=$('list').querySelector(`[data-i="${r.i}"]`);b&&(b.focus(),b.scrollIntoView({block:'nearest'}))});
+route();
+}
+</script></body></html>
