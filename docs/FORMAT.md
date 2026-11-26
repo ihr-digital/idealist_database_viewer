@@ -1,19 +1,25 @@
 # Idealist file formats
 
-What is known of the files written by Blackwell's Idealist for Windows. Everything here was reverse-engineered from one 1995 CMH project; other versions may differ. Both the viewer (`index.html`) and the decoder (`tools/idealist_decode.py`) implement what is described here.
+What is known of the files written by Blackwell's Idealist for Windows. Everything here was reverse-engineered from two 1995 projects: the CMH Gazetteer of Markets and Fairs (`ESSEX.TEX` with the shared CMH `IDEALIST.DEF`) and the Regulars database (all eight files). Other versions of Idealist may differ. Both the viewer (`index.html`) and the decoder (`tools/idealist_decode.py`) implement what is described here.
 
-An Idealist database is a set of files sharing one base name:
+**Contents:** [Overview](#overview) · [`.TEX`](#tex-records) · [Field ids](#field-ids) · [`.DEF`](#def-definition-files) · [`.LAY`](#lay-layout-files) · [`.CMD`](#cmd-command-files) · [Index files](#index-files) · [Open questions](#open-questions)
 
-| File | Contents | Needed to read records? |
-| --- | --- | --- |
-| `.TEX` | The records themselves | Yes |
-| `.DEF` | Record types and field definitions (may be one shared `IDEALIST.DEF`) | Only for field names |
-| `.ROT` | Maps record handles to offsets in the `.TEX` file | No |
-| `.TRM` | B-tree of term + field-id keys (the word index) | No |
-| `.OCC` | Posting lists for the terms | No |
-| `.DIR` | Hash directory | No |
+## Overview
 
-All integers are little-endian unless stated otherwise.
+An Idealist database is a set of files sharing one base name. Extensions may be upper or lower case (`ESSEX.TEX`, `Regulars.tex`).
+
+| File | Format | Contents | Needed to read records? |
+| --- | --- | --- | --- |
+| `.TEX` | Binary | The records | **Yes** |
+| `.DEF` | Text | Record types, field names and field definitions. May be one shared `IDEALIST.DEF` instead of one per database. | Only for field names |
+| `.LAY` | Text | Data-entry form layout: field labels and positions | Only for form labels |
+| `.CMD` | Text | Commands run when the database opens | No |
+| `.ROT` | Binary | Record handle → `.TEX` offset | No |
+| `.TRM` | Binary | Term (word) index, in 4 KB pages | No |
+| `.DIR` | Binary | Directory into the `.TRM` pages | No |
+| `.OCC` | Binary | Occurrence (posting) lists | No |
+
+All binary integers are little-endian unless stated otherwise. Text files use Windows-1252 and CRLF line endings.
 
 ## `.TEX`: records
 
@@ -22,10 +28,13 @@ All integers are little-endian unless stated otherwise.
 | Offset | Size | Contents |
 | --- | --- | --- |
 | 0 | 4 | Magic `iWin` |
-| 8 | 6 | Date stamp (text, NUL-padded) |
-| 64 | varies | Stop-word list: words left out of the index, separated by CRLF |
+| 6 | 2 | `0x04E4` (1252) in Regulars; probably the Windows code page |
+| 8 | 6 | Date stamp (text, NUL-padded), e.g. `Jan95` |
+| 64 | varies | Stop-word list: words left out of the index, separated by CRLF (blank lines separate initial letters) |
 
-Records follow the stop-word list, packed back to back. There is no record count or table of offsets, so readers find the first record by scanning forward from offset 64 for a valid record header (see [Finding records](#finding-records)).
+The other header bytes are not understood (see [Open questions](#open-questions)).
+
+Records follow the stop-word list, packed back to back (in Regulars, from offset 651 to the end of the file with no gaps). There is no record count or table of offsets in the `.TEX` file, so readers find the first record by scanning forward from offset 64 for a valid record header (see [Finding records](#finding-records)).
 
 ### Record header (8 bytes)
 
@@ -47,9 +56,9 @@ Fields follow the header, each as:
 | `u16` | Value length *n* |
 | *n* bytes | Value |
 
-The list ends with a field whose id is `0`. Its value is the **document-type name** (for example a record type from the `.DEF` file), NUL-terminated.
+The list ends with a field whose id is `0`. Its value is the **document-type name** (a record type from the `.DEF` file, e.g. `Monks`), NUL-terminated.
 
-Every record carries the full template for its document type, empty fields included (length 0).
+Every record carries the full template for its document type, empty fields included (length 0). Fields are stored in the order the `.DEF` file lists them.
 
 ### Type codes
 
@@ -65,7 +74,7 @@ The low byte of the type code is an ASCII letter:
 | `D` | — | Date (seen in definitions; decoded as text) | |
 | `N` | — | Name (seen in definitions; decoded as text) | |
 
-**Numbers and integers** are 6 bytes: `05`, then a 24-bit **big-endian** value, then `00 00`. For `#` numbers, divide the value by 100.
+**Numbers and integers** are 6 bytes: `05`, then a 24-bit **big-endian** value, then `00 00`. For `#` numbers, divide the value by 100. Example from Regulars: `05 02 4b 80 00 00` → `0x024B80` = 150400 → year 1504. An empty number has length 0.
 
 **Text** is Windows-1252 with CRLF line breaks. Byte `0x0E` is a soft-wrap marker; it is removed (along with a preceding space, which is replaced by a single space).
 
@@ -73,7 +82,7 @@ Unknown types: the viewer shows the value as text if it is printable, otherwise 
 
 ### Superseded records
 
-Idealist never rewrites a record in place. When a record is edited, the new version is appended and the old copy stays in the file with flag `0x8000`. Superseded copies carry no link to their replacement. The viewer pairs them heuristically: same title and at least half of their filled values in common.
+Idealist never rewrites a record in place. When a record is edited, the new version is appended and the old copy stays in the file with flag `0x8000`. Superseded copies carry no link to their replacement. The viewer pairs them heuristically: same title and at least half of their filled values in common. Regulars holds 894 superseded copies alongside 10,717 current records.
 
 ### Finding records
 
@@ -108,7 +117,9 @@ def field_id(name):
     return h
 ```
 
-Hash collisions are possible. When fewer than half of a database's field ids match the hashed names from its definition and the field counts agree, the viewer assigns names by position instead.
+Examples from Regulars: `Forename` → `0x3D7B`, `Ref` → `0x0184`, `Footnotes` → `0x7FD1`. All 14 of its field ids match their `.DEF` names this way.
+
+Because the id depends only on the name, a `.DEF` or `.LAY` file can be matched to a `.TEX` file without relying on field order. Hash collisions are possible. When fewer than half of a database's field ids match the hashed names from its definition and the field counts agree, the viewer assigns names by position instead.
 
 ## `.DEF`: definition files
 
@@ -120,18 +131,21 @@ One line per document type: the type name, then its field names in stored order,
 
 ```
 [records]
-Book Author Title Date City Publisher Contents
+Default Text
+Monks Forename Surname O_Level Worddate House Rel_Order Diocese Personid Place Ord_Bp Ceremony Ref Year Footnotes
 ```
+
+A type can be defined without any records using it (Regulars' `Default` has none).
 
 ### `[fields]`
 
-One line per field: the name, then `key=value` attributes or bare flags.
+One line per field, sorted by name: the name, then `key=value` attributes or bare flags. A field name used by several record types is defined once.
 
 ```
 [fields]
-Volume Font="Arial" Points=10 Type="Number"
-Zip Font="Arial" Points=10 Type="Text"
-Year_Of_Charter_M3 Font="Arial" MaxChars=4 Points=10 Type="Number"
+Ceremony Font="Courier" Points=10 Type="Number"
+Forename Font="Courier New" MaxChars=20 Points=12 Type="Text"
+Place Font="Courier" Points=10 Type="Wrapped text"
 ```
 
 Attributes seen so far:
@@ -147,6 +161,75 @@ Attributes seen so far:
 
 The viewer shows underscores in field names as spaces.
 
+## `.LAY`: layout files
+
+Plain text describing the data-entry form for each record type. Seen in Regulars (`Regulars.lay`).
+
+```
+:Monks
+	"Forename"	3 6 80 26 Font="Times New Roman" Points=10
+	{Forename}	62 8 131 22 Border
+	"Ordained as "	5 122 103 27
+	{O_Level}	79 123 115 21 Border
+```
+
+- A line starting with `:` begins a record type (`:Default`, `:Monks`).
+- Each following line is indented with a tab and has the form *item* TAB *x y width height* [*attributes*]:
+  - `"text"` is static text on the form (a label). It may be empty (`""`) or have leading or trailing spaces.
+  - `{Field}` is a field box, named as in the `.DEF` file.
+- Attributes seen: `Font="…"`, `Points=n` on text; `Border` on field boxes. Coordinates appear to be in pixels or dialog units from the form's top-left.
+
+In Regulars every field box is directly preceded by its label, so the viewer and decoder take **the nearest non-empty static text before a field box** as that field's label. This turns internal names into the wording users saw:
+
+| `.DEF` name | `.LAY` label |
+| --- | --- |
+| `O_Level` | Ordained as |
+| `Worddate` | Date of ordination |
+| `Rel_Order` | Religious Order |
+| `Place` | Place of Ordination |
+| `Ord_Bp` | Ordaining Bishop |
+| `Ceremony` | Ceremony Number |
+| `Ref` | Register Reference |
+
+A form whose labels sit somewhere other than just before their boxes (say, all labels first) would need matching by position instead; none has been seen yet.
+
+## `.CMD`: command files
+
+Plain text holding Idealist commands, apparently run when the database is opened. `Regulars.cmd` holds a single command with no line ending:
+
+```
+SearchFindAllRecords()
+```
+
+It has no bearing on the data.
+
 ## Index files
 
-`.ROT`, `.TRM`, `.OCC` and `.DIR` make up Idealist's full-text index. Their layouts have only been sketched (see the table at the top) and aren't needed: the viewer searches the decoded text directly.
+These four files make up Idealist's full-text index. They can be rebuilt from the `.TEX` file, and neither tool reads them; the viewer searches the decoded text directly. What has been established, from Regulars:
+
+### `.ROT`: record table
+
+An array of `u32` offsets into the `.TEX` file, indexed by record handle. Unused handles are `0`.
+
+`Regulars.rot` is 45,056 bytes = 11,264 slots. Its 10,717 non-zero entries are exactly the offsets of the 10,717 current records; superseded copies are not listed. Entries are not in file order; how handles are allocated is not known.
+
+### `.TRM`: term index
+
+Fixed 4,096-byte pages (`Regulars.trm` is 96 pages). Page 0 is a header (`00 20 08 00 …`). The other pages begin with a short header and hold packed term entries; the term text is not stored as plain strings, so the encoding is not yet decoded. Earlier notes describe the pages as a B-tree of *term + field id* keys.
+
+### `.DIR`: term directory
+
+An array of `u16` values. In `Regulars.dir` (1,036 bytes = 518 values), the first 512 are page numbers into the `.TRM` file (1–47). Runs of repeated values suggest several hash or prefix slots share one page, as in an extendible-hashing directory. The last 6 values (`15 15 5 6 7 8`) are not understood.
+
+### `.OCC`: occurrence lists
+
+A chain of blocks, each starting with its total size as a `u32`. Walking the sizes covers `Regulars.occ` exactly (6,679 blocks). Block sizes follow the series 32, 80, 176, 368, 752, 1520, 3056, 6128 (each is twice the previous plus 16), so a list that outgrows its block is presumably moved to the next size up. Bytes 4–5 of a block hold a `u16` (likely a count) and bytes 6–7 are usually `0x8000` (6,556 of 6,679 blocks); the rest appears to be compressed record references.
+
+## Open questions
+
+- `.TEX` header bytes other than the magic, the `0x04E4` word and the date. In Regulars: `u32 0x2E1A7851` at offset 26, `u16 0x024B` (587) at 46, `u16 0x028C` (652) at 54 and `u16 0x01D2` (466) at 56. The first record starts at 651.
+- The `D` (date) and `N` (name) field types: their codes and storage have not been seen in a `.TEX` file.
+- The entry encoding in `.TRM` pages and `.OCC` blocks, the `.OCC` block header, and the trailing values in `.DIR`.
+- How `.ROT` record handles are allocated.
+- Whether `.LAY` coordinates are pixels or dialog units, and what other attributes exist.
+- Other `.CMD` commands.

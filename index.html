@@ -92,7 +92,7 @@ dialog{border:1px solid var(--line);border-radius:14px;background:var(--bg);colo
   <p id="sub">Opens <code style="color:#fff">.TEX</code> files from Blackwell's Idealist and turns them into searchable records. Files are read in your browser, and nothing is uploaded.</p></div>
   <div class="tools"><button class="pri" id="openbtn">Open files</button></div>
  </div>
- <input type="file" id="file" accept=".tex,.TEX,.def,.DEF" multiple class="hidden">
+ <input type="file" id="file" accept=".tex,.TEX,.def,.DEF,.lay,.LAY" multiple class="hidden">
  <div id="loaded" class="hidden">
   <div class="stats" id="stats"></div>
   <div class="searchrow">
@@ -108,8 +108,8 @@ dialog{border:1px solid var(--line);border-radius:14px;background:var(--bg);colo
 <div id="views">
 <section id="v-landing" class="band on"><div class="landing">
  <h2>Open an Idealist database</h2>
- <p class="mute">Pick the database's <code>.TEX</code> file, which holds the records. Add its <code>.DEF</code> file to get the real field names. The CMH project's IDEALIST.DEF is built in, and any .DEF you load is remembered in this browser. The index files (.TRM, .OCC, .ROT, .DIR) aren't needed.</p>
- <div class="drop" id="drop"><h3>Drop a .TEX file here</h3><p>…optionally with a .DEF file, or use “Open files” above.</p></div>
+ <p class="mute">Pick the database's <code>.TEX</code> file, which holds the records. Add its <code>.DEF</code> file to get the real field names, and its <code>.LAY</code> file to get the labels from Idealist's data-entry form. The CMH project's IDEALIST.DEF is built in, and any .DEF or .LAY you load is remembered in this browser. You can select the whole database folder: the index and command files (.TRM, .OCC, .ROT, .DIR, .CMD) aren't needed and are skipped.</p>
+ <div class="drop" id="drop"><h3>Drop a .TEX file here</h3><p>…optionally with its .DEF and .LAY files, or use “Open files” above.</p></div>
 </div></section>
 
 <section id="v-browse" class="band"><div class="wrap main">
@@ -134,7 +134,7 @@ dialog{border:1px solid var(--line);border-radius:14px;background:var(--bg);colo
 <section id="v-fields" class="band"><div class="wrap">
  <h2 style="font-size:24px">Fields</h2>
  <p class="mute" id="fieldsnote"></p>
- <div class="tools"><button id="copylabels">Copy labels as JSON</button><button id="pastelabels">Paste labels…</button><button id="resetlabels">Reset labels</button><button id="defbtn">Load a .DEF file</button><button id="defreset" class="hidden">Forget loaded .DEF files</button></div>
+ <div class="tools"><button id="copylabels">Copy labels as JSON</button><button id="pastelabels">Paste labels…</button><button id="resetlabels">Reset labels</button><button id="defbtn">Load .DEF or .LAY files</button><button id="defreset" class="hidden">Forget loaded .DEF and .LAY files</button></div>
  <div style="overflow-x:auto"><table class="fields" id="ftbl"></table></div>
 </div></section>
 
@@ -170,6 +170,18 @@ function parseDEF(txt,name){const def={name,types:{},fields:{}};let sec='';
 const BUILT=parseDEF(BUILTIN_DEF,'IDEALIST.DEF (built in, CMH project)');
 let DEFS=(store.get('defs',[])||[]).map(x=>parseDEF(x.text,x.name)).filter(Boolean);
 const allDefs=()=>[...DEFS.slice().reverse(),BUILT];
+
+/* ---------- layout file (.LAY) ---------- */
+// The data-entry form. ":Type" starts a record type. Indented lines are either "Label" x y w h [attributes] (static text)
+// or {Field} x y w h [Border] (a field box). A field's label is the nearest non-empty static text before it.
+function parseLAY(txt,name){const lay={name,types:{}};let cur=null,last='';
+  for(const line of txt.split(/\r?\n/)){const t=line.match(/^:(.+)$/);if(t){cur=lay.types[t[1].trim()]={};last='';continue}if(!cur)continue;
+    const m=line.match(/^\s*(?:"([^"]*)"|\{([^}]*)\})\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)/);if(!m)continue;
+    if(m[1]!==undefined){const l=m[1].trim().replace(/\s*:$/,'');if(l)last=l}else{cur[m[2].trim()]=last;last=''}}
+  return Object.keys(lay.types).length?lay:null}
+let LAYS=(store.get('lays',[])||[]).map(x=>parseLAY(x.text,x.name)).filter(Boolean);
+const allLays=()=>LAYS.slice().reverse();
+const remember=(key,list,obj,name,txt)=>{const st=(store.get(key,[])||[]).filter(x=>x.name!==name);st.push({name,text:txt});store.set(key,st);return [...list.filter(x=>x.name!==name),obj]};
 const defDesc=a=>!a?'':[a.Type,a.MaxChars&&'max '+a.MaxChars+' chars',a.Format&&'format “'+a.Format+'”',a.Uppercase&&'upper case',a.InitialCaps&&'initial caps',a.Mandatory&&'mandatory'].filter(Boolean).join(' · ');
 
 /* ---------- parser ---------- */
@@ -206,20 +218,22 @@ const fmt=v=>typeof v==='number'?(Number.isInteger(v)?String(v):v.toFixed(2)):v;
 let DB=null,DT='',S=null,sel=null,view=null,FILTERS=[],tsort={id:null,dir:1};
 function schemaFor(dt){
   const rs=DB.recs.filter(r=>r.doctype===dt),cur=rs.filter(r=>r.cur),base=cur.length?cur:rs,order=new Map();
-  rs.forEach(r=>r.f.forEach((x,i)=>{if(!order.has(x.id))order.set(x.id,{id:x.id,typ:x.typ,pos:i,fill:0,vals:new Map(),len:0})}));
-  base.forEach(r=>r.f.forEach(x=>{const o=order.get(x.id);if(x.val!==''){o.fill++;o.len+=String(x.val).length;if(o.vals.size<200)o.vals.set(x.val,(o.vals.get(x.val)||0)+1)}}));
-  const fields=[...order.values()].sort((a,b)=>a.pos-b.pos);fields.forEach((o,i)=>{o.n=i+1;o.avg=o.fill?o.len/o.fill:0});
+  rs.forEach(r=>r.f.forEach((x,i)=>{if(!order.has(x.id))order.set(x.id,{id:x.id,typ:x.typ,pos:i,fill:0,vals:new Map(),ds:new Set(),len:0})}));
+  base.forEach(r=>r.f.forEach(x=>{const o=order.get(x.id);if(x.val!==''){o.fill++;o.len+=String(x.val).length;o.ds.add(x.val);if(o.vals.size<200)o.vals.set(x.val,(o.vals.get(x.val)||0)+1)}}));
+  const fields=[...order.values()].sort((a,b)=>a.pos-b.pos);fields.forEach((o,i)=>{o.n=i+1;o.avg=o.fill?o.len/o.fill:0;o.nd=o.ds.size;delete o.ds});
   // match the definition file: by name hash first, by position if the hashes don't fit
   const def=allDefs().find(d=>Object.keys(d.types).some(k=>k.toLowerCase()===dt.toLowerCase()))||null;const dkey=def&&Object.keys(def.types).find(k=>k.toLowerCase()===dt.toLowerCase());const names=dkey?def.types[dkey]:[];const dmap={};let match=null;
   if(names.length){const byHash=new Map(names.map(n=>[h4(hashName(n)),n]));let hit=0;fields.forEach(o=>{if(byHash.has(o.id)){dmap[o.id]=byHash.get(o.id);hit++}});match={by:'name',hit,of:fields.length,def:names.length};
     if(hit<fields.length/2&&names.length===fields.length){fields.forEach((o,i)=>dmap[o.id]=names[i]);match={by:'position',hit:fields.length,of:fields.length,def:names.length}}}
+  const lay=allLays().find(l=>Object.keys(l.types).some(k=>k.toLowerCase()===dt.toLowerCase()))||null,lmap={};
+  if(lay){const lt=lay.types[Object.keys(lay.types).find(k=>k.toLowerCase()===dt.toLowerCase())];Object.entries(lt).forEach(([n,l])=>{const id=h4(hashName(n));if(l&&fields.some(o=>o.id===id))lmap[id]=l})}
   const saved=store.get('cfg:'+dt+':'+fields.length,null);
-  const auto=fields.filter(o=>KNOWN[o.typ]!=='decimal'&&KNOWN[o.typ]!=='integer'&&o.fill>=base.length*.9&&o.avg<60).sort((a,b)=>b.vals.size-a.vals.size);
+  const auto=fields.filter(o=>KNOWN[o.typ]!=='decimal'&&KNOWN[o.typ]!=='integer'&&o.fill>=base.length*.9&&o.avg<60).sort((a,b)=>b.nd-a.nd);
   const title=(auto[0]&&auto[0].id)||fields[0]?.id;
   const subAuto=fields.filter(o=>o.id!==title&&KNOWN[o.typ]!=='integer'&&KNOWN[o.typ]!=='decimal'&&o.avg<60&&o.vals.size>1).sort((a,b)=>b.fill-a.fill)[0];
   const cfg=Object.assign({labels:{},title,sub:(subAuto&&subAuto.id)||null,table:fields.filter(o=>o.fill).slice(0,6).map(o=>o.id)},saved||{});
-  return {dt,fields,byId:new Map(fields.map(o=>[o.id,o])),cfg,total:base.length,dmap,match,dkey,def}}
-const label=id=>S.cfg.labels[id]||(S.dmap[id]&&S.dmap[id].replace(/_/g,' '))||('Field '+(S.byId.get(id)?.n??'?'));
+  return {dt,fields,byId:new Map(fields.map(o=>[o.id,o])),cfg,total:base.length,dmap,match,dkey,def,lmap,lay}}
+const label=id=>S.cfg.labels[id]||S.lmap[id]||(S.dmap[id]&&S.dmap[id].replace(/_/g,' '))||('Field '+(S.byId.get(id)?.n??'?'));
 const save=()=>store.set('cfg:'+S.dt+':'+S.fields.length,S.cfg);
 
 function open(buf,name){
@@ -303,9 +317,9 @@ $('copyjson').onclick=()=>copy(JSON.stringify(TROWS.map(r=>({offset:r.off,curren
 
 /* ---------- fields ---------- */
 function renderFields(){
-  const mt=S.match;$('defreset').classList.toggle('hidden',!DEFS.length);
-  $('fieldsnote').innerHTML=`${S.fields.length} fields in document type “${esc(S.dt)}”, in the order Idealist stores them. Fill rates count the ${S.total} current records. `+(mt?`Names come from <b>${esc(S.def.name)}</b>: ${mt.hit} of ${mt.of} fields matched ${mt.by==='name'?'by name':'by position (the name hashes didn’t match)'}.`:`None of the loaded definition files has a “${esc(S.dt)}” record type, so the fields are numbered. Load the .DEF file that came with this database, or type names below.`)+` Names you type override the definition and are saved in this browser.`;
-  $('ftbl').innerHTML=`<thead><tr><th>#</th><th>Id</th><th>Type</th><th>Name</th><th>Definition</th><th>Filled</th><th>Distinct</th><th>Example</th><th>In title</th><th>Subtitle</th><th>In table</th></tr></thead><tbody>${S.fields.map(o=>{const ex=[...o.vals.entries()].sort((a,b)=>b[1]-a[1])[0];return `<tr><td class="num">${o.n}</td><td class="id">${o.id}</td><td>${tname(o.typ)}</td><td><input type="text" data-l="${o.id}" value="${esc(S.cfg.labels[o.id]||'')}" placeholder="${esc(label(o.id))}" aria-label="Name for ${o.id}"></td><td style="font-size:13px">${S.dmap[o.id]?`<code>${esc(S.dmap[o.id])}</code><br><span class="mute">${esc(defDesc(S.def.fields[S.dmap[o.id]]))}</span>`:'<span class="mute">—</span>'}</td><td style="white-space:nowrap"><span class="fillbar"><i style="width:${S.total?100*o.fill/S.total:0}%"></i></span> ${o.fill}</td><td class="num">${o.vals.size>=200?'200+':o.vals.size}</td><td class="cell" style="max-width:24ch">${ex?esc(fmt(ex[0])):'<span class="mute">empty</span>'}</td><td><input type="checkbox" data-t="${o.id}" ${titles().includes(o.id)?'checked':''} aria-label="Part of title"></td><td><input type="radio" name="st" data-st="${o.id}" ${S.cfg.sub===o.id?'checked':''} aria-label="Use as subtitle"></td><td><input type="checkbox" data-c="${o.id}" ${S.cfg.table.includes(o.id)?'checked':''} aria-label="Show in table"></td></tr>`}).join('')}</tbody>`}
+  const mt=S.match;$('defreset').classList.toggle('hidden',!DEFS.length&&!LAYS.length);
+  $('fieldsnote').innerHTML=`${S.fields.length} fields in document type “${esc(S.dt)}”, in the order Idealist stores them. Fill rates count the ${S.total} current records. `+(mt?`Names come from <b>${esc(S.def.name)}</b>: ${mt.hit} of ${mt.of} fields matched ${mt.by==='name'?'by name':'by position (the name hashes didn’t match)'}.`:`None of the loaded definition files has a “${esc(S.dt)}” record type, so the fields are numbered. Load the .DEF file that came with this database, or type names below.`)+(S.lay?` Form labels come from <b>${esc(S.lay.name)}</b> and take precedence over definition names.`:'')+` Names you type override both and are saved in this browser.`;
+  $('ftbl').innerHTML=`<thead><tr><th>#</th><th>Id</th><th>Type</th><th>Name</th><th>Definition</th><th>Filled</th><th>Distinct</th><th>Example</th><th>In title</th><th>Subtitle</th><th>In table</th></tr></thead><tbody>${S.fields.map(o=>{const ex=[...o.vals.entries()].sort((a,b)=>b[1]-a[1])[0];return `<tr><td class="num">${o.n}</td><td class="id">${o.id}</td><td>${tname(o.typ)}</td><td><input type="text" data-l="${o.id}" value="${esc(S.cfg.labels[o.id]||'')}" placeholder="${esc(label(o.id))}" aria-label="Name for ${o.id}"></td><td style="font-size:13px">${S.dmap[o.id]?`<code>${esc(S.dmap[o.id])}</code><br><span class="mute">${esc(defDesc(S.def.fields[S.dmap[o.id]]))}</span>`:'<span class="mute">—</span>'}${S.lmap[o.id]?`<br><span class="mute">form label “${esc(S.lmap[o.id])}”</span>`:''}</td><td style="white-space:nowrap"><span class="fillbar"><i style="width:${S.total?100*o.fill/S.total:0}%"></i></span> ${o.fill}</td><td class="num">${o.nd}</td><td class="cell" style="max-width:24ch">${ex?esc(fmt(ex[0])):'<span class="mute">empty</span>'}</td><td><input type="checkbox" data-t="${o.id}" ${titles().includes(o.id)?'checked':''} aria-label="Part of title"></td><td><input type="radio" name="st" data-st="${o.id}" ${S.cfg.sub===o.id?'checked':''} aria-label="Use as subtitle"></td><td><input type="checkbox" data-c="${o.id}" ${S.cfg.table.includes(o.id)?'checked':''} aria-label="Show in table"></td></tr>`}).join('')}</tbody>`}
 $('ftbl').addEventListener('change',e=>{const t=e.target;
   if(t.dataset.l){const v=t.value.trim();if(v)S.cfg.labels[t.dataset.l]=v;else delete S.cfg.labels[t.dataset.l];save();setDTkeep()}
   if(t.dataset.t){const id=t.dataset.t;let a=titles();a=t.checked?[...a,id]:a.filter(x=>x!==id);if(!a.length){t.checked=true;toast('Keep at least one title field');return}S.cfg.title=a.sort((x,y)=>S.byId.get(x).pos-S.byId.get(y).pos);save();setDTkeep()}
@@ -313,7 +327,7 @@ $('ftbl').addEventListener('change',e=>{const t=e.target;
   if(t.dataset.c){const id=t.dataset.c;S.cfg.table=t.checked?[...S.cfg.table,id].sort((a,b)=>S.byId.get(a).pos-S.byId.get(b).pos):S.cfg.table.filter(x=>x!==id);save();renderTable()}});
 function setDTkeep(){const keepSel=sel,f=FILTERS,sc=$('scope').value;setDT(DT);FILTERS=f;$('scope').value=sc;sel=keepSel;refresh()}
 $('defbtn').onclick=()=>$('file').click();
-$('defreset').onclick=()=>{DEFS=[];store.set('defs',[]);if(DB){setDT(DT);renderFile()}toast('Loaded definitions forgotten')};
+$('defreset').onclick=()=>{DEFS=[];LAYS=[];store.set('defs',[]);store.set('lays',[]);if(DB){setDT(DT);renderFile()}toast('Loaded definition and layout files forgotten')};
 $('copylabels').onclick=()=>{const o={};S.fields.forEach(f=>{const l=label(f.id);if(!/^Field \d+$/.test(l))o[f.id]=l});copy(JSON.stringify(o,null,1),'Copied labels')};
 $('pastelabels').onclick=()=>{$('dlgtext').value='';$('dlg').showModal()};
 $('dlg').addEventListener('close',()=>{if($('dlg').returnValue!=='ok')return;try{const o=JSON.parse($('dlgtext').value);Object.entries(o).forEach(([k,v])=>{if(S.byId.has(k)&&typeof v==='string')S.cfg.labels[k]=v});save();setDTkeep();toast('Labels applied')}catch(e){toast('That isn’t valid JSON')}});
@@ -336,10 +350,13 @@ function renderFile(){
   <li><b>Re-saving a record</b> keeps the old copy, flagged <code>0x8000</code>. “Show superseded copies” reveals them. Copies aren't linked to their current record, so the reader pairs them by matching title and at least half their filled values.</li>
   <li><b>Field ids</b> are a hash of the field name in the definition file: upper-case the name, then for each character <code>h = (h &lt;&lt; 1) XOR char</code>, kept to 16 bits. Names of one or two characters are stored as the characters themselves (<code>M1</code> → <code>0x314D</code>).</li>
   <li><b>Definition files</b> (<code>.DEF</code>) are plain text: either one <code>IDEALIST.DEF</code> shared by a whole installation, or one per database such as <code>Regulars.def</code>. <code>[records]</code> lists each record type with its fields in order. <code>[fields]</code> gives each field's display font, data type (Wrapped text = <code>0x2057</code>, Text = <code>0x2054</code>, Line of text = <code>0x004C</code>, Number = <code>0x0323</code>, Integer = <code>0x0749</code>) and entry rules such as MaxChars, Format and Uppercase.</li>
-  <li><b>Other files</b>: <code>.ROT</code> maps record handles to TEX offsets, <code>.TRM</code> is a B-tree of term + field-id keys, <code>.OCC</code> holds posting lists and <code>.DIR</code> is a hash directory. None of them are needed to read the records. This reader searches the decoded text directly.</li>
+  <li><b>Layout files</b> (<code>.LAY</code>) are plain text describing the data-entry form. <code>:Monks</code> starts a record type; each indented line is either static text (<code>"Ordained as"</code>) or a field box (<code>{O_Level}</code>), followed by x, y, width and height and optional attributes. This reader uses the text before each field box as the field's label.</li>
+  <li><b>Command files</b> (<code>.CMD</code>) hold Idealist commands run when the database opens, such as <code>SearchFindAllRecords()</code>.</li>
+  <li><b>Index files</b>: <code>.ROT</code> is an array of <code>u32</code> TEX offsets, one per record handle, zero for unused handles (it lists only current records). <code>.TRM</code> holds the term index in 4 KB pages; <code>.DIR</code> is a directory of 512 <code>u16</code> slots pointing into those pages. <code>.OCC</code> holds the occurrence (posting) lists as a chain of blocks, each starting with its <code>u32</code> size. None of them are needed to read the records. This reader searches the decoded text directly.</li>
   </ul>
-  <p class="mute">Reverse-engineered from a 1995 Idealist project; untested on other versions.</p>
-  <h3>Definition files</h3>${allDefs().map(D=>`<p><b>${esc(D.name)}</b>${S&&S.def===D?' (used for this database)':''}<br><span class="mute">${Object.keys(D.types).length} record types: ${Object.entries(D.types).map(([k,v])=>esc(k)+' ('+v.length+')').join(', ')}. ${Object.keys(D.fields).length} field definitions.</span></p>`).join('')}`}
+  <p class="mute">Reverse-engineered from two 1995 Idealist projects (the CMH Gazetteer of Markets and Fairs and Regulars); untested on other versions.</p>
+  <h3>Definition files</h3>${allDefs().map(D=>`<p><b>${esc(D.name)}</b>${S&&S.def===D?' (used for this database)':''}<br><span class="mute">${Object.keys(D.types).length} record types: ${Object.entries(D.types).map(([k,v])=>esc(k)+' ('+v.length+')').join(', ')}. ${Object.keys(D.fields).length} field definitions.</span></p>`).join('')}
+  <h3>Layout files</h3>${allLays().length?allLays().map(L=>`<p><b>${esc(L.name)}</b>${S&&S.lay===L?' (used for this database)':''}<br><span class="mute">Forms for ${Object.entries(L.types).map(([k,v])=>esc(k)+' ('+Object.keys(v).length+' fields)').join(', ')}.</span></p>`).join(''):'<p class="mute">None loaded. Load a database’s .LAY file to use the labels from its data-entry form.</p>'}`}
 
 /* ---------- plumbing ---------- */
 function toast(t){const el=$('toast');el.textContent=t;el.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove('on'),2200)}
@@ -348,10 +365,14 @@ function route(){let v=(location.hash||'#landing').slice(1);if(!DB||!['browse','
   document.querySelectorAll('nav.tabs a').forEach(a=>a.toggleAttribute('aria-current',a.dataset.t===v));
   if(v==='browse'&&DB){refresh();const b=$('list').querySelector('[aria-current=true]');b&&b.scrollIntoView({block:'nearest'})}}
 window.addEventListener('hashchange',route);
-async function openFiles(list){const fs=[...list];
-  for(const f of fs.filter(f=>/\.def$/i.test(f.name))){const txt=await f.text(),d=parseDEF(txt,f.name);if(d){DEFS=DEFS.filter(x=>x.name!==f.name);DEFS.push(d);const st=(store.get('defs',[])||[]).filter(x=>x.name!==f.name);st.push({name:f.name,text:txt});store.set('defs',st);toast('Definition loaded: '+f.name+' ('+Object.keys(d.types).length+' record types)')}else toast(f.name+' is not an Idealist definition file')}
-  const tex=fs.find(f=>!/\.def$/i.test(f.name));
-  if(tex){try{open(await tex.arrayBuffer(),tex.name)}catch(e){toast('Could not read that file')}}else if(DB){setDT(DT);renderFile()}}
+// Files of an Idealist database share a base name. Only .TEX is needed; .DEF and .LAY add names and labels; the rest are skipped.
+const SKIP=/\.(trm|occ|rot|dir|cmd)$/i;
+async function openFiles(list){const fs=[...list],msgs=[];
+  for(const f of fs.filter(f=>/\.def$/i.test(f.name))){const txt=await f.text(),d=parseDEF(txt,f.name);if(d){DEFS=remember('defs',DEFS,d,f.name,txt);msgs.push(f.name+' ('+Object.keys(d.types).length+' record types)')}else msgs.push(f.name+' is not an Idealist definition file')}
+  for(const f of fs.filter(f=>/\.lay$/i.test(f.name))){const txt=await f.text(),l=parseLAY(txt,f.name);if(l){LAYS=remember('lays',LAYS,l,f.name,txt);msgs.push(f.name+' (form labels)')}else msgs.push(f.name+' is not an Idealist layout file')}
+  const rest=fs.filter(f=>!/\.(def|lay)$/i.test(f.name)),tex=rest.find(f=>/\.tex$/i.test(f.name))||rest.find(f=>!SKIP.test(f.name));
+  if(msgs.length)toast('Loaded '+msgs.join(', '));
+  if(tex){try{open(await tex.arrayBuffer(),tex.name)}catch(e){toast('Could not read that file')}}else if(DB){setDT(DT);renderFile()}else if(rest.length&&!msgs.length)toast('Choose the database’s .TEX file')}
 $('openbtn').onclick=()=>$('file').click();
 $('file').onchange=e=>{openFiles(e.target.files);e.target.value=''};
 const dz=$('drop');dz.ondragover=e=>{e.preventDefault();dz.classList.add('over')};dz.ondragleave=()=>dz.classList.remove('over');
