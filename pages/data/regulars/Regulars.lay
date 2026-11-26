@@ -1,0 +1,33 @@
+:Default
+	"Text"	8 8 80 42
+	{Text}	96 8 235 42 Border
+:Monks
+	"Forename"	3 6 80 26 Font="Times New Roman" Points=10
+	{Forename}	62 8 131 22 Border
+	"Surname"	208 7 52 16
+	{Surname}	266 8 183 19 Border
+	""	2 128 91 18 Font="Times New Roman" Points=10
+	"Ordained as "	5 122 103 27
+	{O_Level}	79 123 115 21 Border
+	"Date of ordination"	200 124 108 21 Font="Times New Roman" Points=10
+	{Worddate}	309 128 145 22 Border
+	"House"	3 46 70 20
+	{House}	42 46 342 19 Border
+	"Religious Order"	2 79 80 17
+	{Rel_Order}	83 77 143 21 Border
+	"Diocese"	256 80 49 19
+	{Diocese}	305 77 135 23 Border
+	"Personid"	272 256 61 18
+	{Personid}	328 256 112 16 Border
+	" Place of Ordination"	1 162 108 17
+	{Place}	104 164 349 29 Border
+	"Ordaining Bishop"	4 200 100 20
+	{Ord_Bp}	101 203 353 32 Border
+	" Ceremony Number"	103 254 114 16
+	{Ceremony}	200 256 55 18 Border
+	"Register Reference"	6 287 107 23
+	{Ref}	109 290 200 23 Border
+	"Year"	9 254 43 16
+	{Year}	44 255 47 20 Border
+	"Footnotes"	4 327 61 21
+	{Footnotes}	106 322 378 47 Border

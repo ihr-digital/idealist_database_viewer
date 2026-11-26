@@ -4,8 +4,10 @@ A single-page application for reading legacy **Blackwell Idealist** databases, b
 
 Idealist was a 1990s free-text database package for Windows. Its `.TEX` files are a proprietary binary format that modern software can't open. This viewer decodes them in the browser and turns them into searchable, browsable records. A small Python script does the same job on the command line and writes JSON.
 
+**Published site:** the viewer is deployed on GitHub Pages with two databases built in: the Seculars and Regulars databases behind Virginia Davis, *Clergy in the Late Middle Ages* (CMH, 2000). See [Published site](#published-site-github-pages).
+
 > 📄 **File format reference: [`docs/FORMAT.md`](docs/FORMAT.md)**
-> Read it for the byte-level layout of every file in an Idealist database (`.TEX`, `.DEF`, `.LAY`, `.CMD`, `.ROT`, `.TRM`, `.OCC`, `.DIR`), how field ids are derived from field names, and what is still unknown. Start there if you need to write your own reader or check what the viewer is doing.
+> Read it for the byte-level layout of every file in an Idealist database (`.TEX`, `.DEF`, `.LAY`, `.CMD`, `.LST`, `.ROT`, `.TRM`, `.OCC`, `.DIR`), how field ids are derived from field names, and what is still unknown. Start there if you need to write your own reader or check what the viewer is doing.
 
 ## Contents
 
@@ -14,8 +16,11 @@ Idealist was a 1990s free-text database package for Windows. Its `.TEX` files ar
 | [`index.html`](index.html) | The viewer. One self-contained HTML file with no dependencies and no build step. |
 | [`tools/idealist_decode.py`](tools/idealist_decode.py) | Command-line decoder: `.TEX` file in, JSON out. Python 3 standard library only. |
 | [`docs/FORMAT.md`](docs/FORMAT.md) | **The file format reference.** Every Idealist file type, as far as it is known. |
+| [`tools/build_site.py`](tools/build_site.py) | Builds the GitHub Pages site from `index.html` and `pages/site.json`. |
+| [`pages/`](pages) | The published site's config (`site.json`) and its databases (`data/`). |
+| [`.github/workflows/pages.yml`](.github/workflows/pages.yml) | Builds and deploys the site on every push to `main`. |
 
-No database files are included, and `.gitignore` keeps Idealist data files out of the repository. You need your own copy of a database.
+The only database files in the repository are the two published ones under `pages/data/`. Elsewhere, `.gitignore` keeps Idealist data files out. To use the viewer on another database, you need your own copy.
 
 ## The files in an Idealist database
 
@@ -34,6 +39,13 @@ A database is a folder of files sharing one base name. Using the Regulars databa
 
 The four index files (`.rot`, `.trm`, `.dir`, `.occ`) are only Idealist's own search index. Everything they contain can be rebuilt from the `.tex` file, so neither tool reads them. Their layouts, as far as they are understood, are in [`docs/FORMAT.md`](docs/FORMAT.md#index-files).
 
+Some databases also come with two plain-text list files, as Seculars does:
+
+| File | What it holds | Viewer | Decoder |
+| --- | --- | --- | --- |
+| `Stopword.lst` | The stop-word list: words left out of the index. A copy of it is stored in the `.tex` header, and the viewer shows it on the File tab. | Not needed | Not used |
+| `Synonym.lst` | Synonym groups for Idealist's search (e.g. `"color" colour`). The Seculars copy is Blackwell's generic sample list, not specific to the database. | Not needed | Not used |
+
 Some installations have no per-database `.def` and use one `IDEALIST.DEF` shared by every database instead. The CMH project's shared `IDEALIST.DEF` is built into the viewer.
 
 ## Databases it has been tested with
@@ -42,6 +54,9 @@ Some installations have no per-database `.def` and use one `IDEALIST.DEF` shared
 | --- | --- | --- | --- |
 | **CMH Gazetteer of Markets and Fairs** (e.g. `ESSEX.TEX`) | defined in the shared CMH `IDEALIST.DEF` | 334 stored in the Essex file | `.TEX`; definitions built in |
 | **Regulars** (`Regulars.tex`, January 1995) | `Monks` (14 fields) | 10,717 current + 894 superseded | All eight files listed above |
+| **Seculars** (`Seculars.tex`, January 1995) | `Move` (17 fields) | 20,246 current + 2,416 superseded | All except `.lay`, plus `Stopword.lst` and `Synonym.lst` |
+
+Regulars and Seculars are the two databases behind Virginia Davis, *Clergy in the Late Middle Ages: A Register of Clergy Ordained in the Diocese of London Based on Episcopal Ordination Lists 1361–1539* (London, Centre for Metropolitan History, 2000). Both are published on the [project site](#published-site-github-pages).
 
 The Regulars database records ordinations of members of religious orders (Augustinian, Benedictine, Dominican, Carmelite, Franciscan and others) between 1361 and 1537. The register references name London bishops from Sudbury to Stokesley. Its `Monks` fields are:
 
@@ -63,6 +78,22 @@ The Regulars database records ordinations of members of religious orders (August
 | `Footnotes` | Footnotes | Wrapped text | `0x7fd1` |
 
 `Regulars.def` also defines a `Default` record type with a single `Text` field. No records use it.
+
+The Seculars database records ordinations of secular clergy between 1361 and 1537. It has no `.lay` file, so fields are named from `Seculars.def`. Its `Move` fields, in stored order:
+
+| Field (`.def`) | Type | Field id | | Field (`.def`) | Type | Field id |
+| --- | --- | --- | --- | --- | --- | --- |
+| `Surname` | Text | `0x18eb` | | `Footnotes` | Text | `0x7fd1` |
+| `Forename` | Text | `0x3d7b` | | `Personid` | Number | `0x35a6` |
+| `Diocese` | Text | `0x1f3f` | | `Education` | Text | `0x7d64` |
+| `Homeplace` | Text | `0x72c7` | | `Year` | Number | `0x030c` |
+| `Ordained` | Text | `0x3c2e` | | `Reference` | Text | `0x6f53` |
+| `Worddate` | Text | `0x3589` | | `Ceremony` | Number | `0x3d41` |
+| `Titlecode` | Number | `0x6bb9` | | `Place` | Text | `0x06a7` |
+| `Title` | Text | `0x0685` | | `Ordainer` | Text | `0x3c38` |
+| `Original` | Text | `0x3dee` | | | | |
+
+Fields shared with Regulars (`Forename`, `Surname`, `Diocese`, `Worddate`, `Personid`, `Place`, `Ceremony`, `Year`, `Footnotes`) have the same ids in both, because ids come from names. `Personid` appears to link records of the same person.
 
 ## Using the viewer
 
@@ -131,9 +162,56 @@ Each record looks like this:
 
 Numbers (`#` type) have two implied decimal places, so they come out as floats (`1504.0`); integers (`I` type) come out as integers.
 
+## Published site (GitHub Pages)
+
+The repository deploys a public site with the Seculars and Regulars databases built in, under the heading *Virginia Davis, Clergy in the Late Middle Ages: A Register of Clergy Ordained in the Diocese of London Based on Episcopal Ordination Lists 1361–1539 (London, Centre for Metropolitan History, 2000)*.
+
+- **Switching databases:** buttons under the heading switch between *Secular clergy* and *Regular clergy*. Each database is downloaded the first time it is chosen, then kept in memory, so switching back is instant. The current tab is kept.
+- **Links:** the database is in the URL, so links can point straight at one: `?db=seculars` or `?db=regulars`, optionally followed by a tab (`#browse`, `#table`, `#fields`, `#file`).
+- **Download size:** the build stores a gzipped copy of each `.tex` (Seculars 6.7 MB → 0.9 MB, Regulars 3.2 MB → 0.3 MB). Browsers that can unpack gzip (all current ones) fetch that; others fetch the original.
+- Everything else (search, table, fields, CSV/JSON export) works as in the standalone viewer. *Open files* is hidden.
+
+### How it is built
+
+[`pages/site.json`](pages/site.json) lists the heading, a short title for the browser tab, a subtitle, and each database's id, button label, description and file paths (relative to `pages/`):
+
+```json
+{
+ "title": "Virginia Davis, Clergy in the Late Middle Ages: …",
+ "short": "Clergy in the Late Middle Ages: …",
+ "subtitle": "The original Idealist databases, searchable in your browser.",
+ "databases": [
+  {"id": "seculars", "label": "Secular clergy", "description": "Seculars database",
+   "tex": "data/seculars/Seculars.tex", "def": "data/seculars/Seculars.def"},
+  {"id": "regulars", "label": "Regular clergy", "description": "…",
+   "tex": "data/regulars/Regulars.tex", "def": "data/regulars/Regulars.def", "lay": "data/regulars/Regulars.lay"}
+ ]
+}
+```
+
+The first database listed opens by default. Only `.tex`, `.def` and `.lay` files are published; the index files aren't needed.
+
+[`tools/build_site.py`](tools/build_site.py) copies `index.html` into `_site/`, embeds the config in it as `<script type="application/json" id="collection">`, copies the data files and writes the gzipped copies. The viewer switches to collection mode only when that embedded config is present, so `index.html` on its own is unchanged.
+
+The workflow in [`.github/workflows/pages.yml`](.github/workflows/pages.yml) runs the build and deploys `_site/` on every push to `main`, or by hand from the Actions tab. The repository's **Settings → Pages → Source** must be set to **GitHub Actions**.
+
+To preview the site locally:
+
+```bash
+python3 tools/build_site.py
+```
+
+```bash
+python3 -m http.server -d _site
+```
+
+Then open http://localhost:8000. (Opening `_site/index.html` directly from disk won't work, because browsers block `fetch` on `file://` pages.)
+
+To publish a different set of databases, edit `pages/site.json` and put the files under `pages/data/`.
+
 ## Limitations
 
-The format was reverse-engineered from two 1995 Idealist projects (the CMH Gazetteer and Regulars). Other versions of Idealist may differ. Unrecognised field types are shown as text if printable, otherwise as hex. If a file doesn't open, the **File** tab reports how many bytes weren't recognised as records. See [`docs/FORMAT.md`](docs/FORMAT.md#open-questions) for what is still unknown.
+The format was reverse-engineered from three 1995 Idealist databases (the CMH Gazetteer, Regulars and Seculars). Other versions of Idealist may differ. Unrecognised field types are shown as text if printable, otherwise as hex. If a file doesn't open, the **File** tab reports how many bytes weren't recognised as records. See [`docs/FORMAT.md`](docs/FORMAT.md#open-questions) for what is still unknown.
 
 ## Licence
 
