@@ -233,3 +233,7 @@ __marimo__/
 *.rot
 *.DIR
 *.dir
+# ...except the databases published on GitHub Pages
+!pages/data/**
+# GitHub Pages build output (tools/build_site.py)
+_site/

@@ -1,0 +1,22 @@
+{
+ "title": "Virginia Davis, Clergy in the Late Middle Ages: A Register of Clergy Ordained in the Diocese of London Based on Episcopal Ordination Lists 1361–1539 (London, Centre for Metropolitan History, 2000)",
+ "short": "Clergy in the Late Middle Ages: Register of Clergy Ordained in the Diocese of London 1361–1539",
+ "subtitle": "The original Idealist databases, searchable in your browser.",
+ "databases": [
+  {
+   "id": "seculars",
+   "label": "Secular clergy",
+   "description": "Seculars database",
+   "tex": "data/seculars/Seculars.tex",
+   "def": "data/seculars/Seculars.def"
+  },
+  {
+   "id": "regulars",
+   "label": "Regular clergy",
+   "description": "Regulars database: members of religious orders",
+   "tex": "data/regulars/Regulars.tex",
+   "def": "data/regulars/Regulars.def",
+   "lay": "data/regulars/Regulars.lay"
+  }
+ ]
+}

@@ -1,8 +1,8 @@
 # Idealist file formats
 
-What is known of the files written by Blackwell's Idealist for Windows. Everything here was reverse-engineered from two 1995 projects: the CMH Gazetteer of Markets and Fairs (`ESSEX.TEX` with the shared CMH `IDEALIST.DEF`) and the Regulars database (all eight files). Other versions of Idealist may differ. Both the viewer (`index.html`) and the decoder (`tools/idealist_decode.py`) implement what is described here.
+What is known of the files written by Blackwell's Idealist for Windows. Everything here was reverse-engineered from three 1995 databases: the CMH Gazetteer of Markets and Fairs (`ESSEX.TEX` with the shared CMH `IDEALIST.DEF`), and the Regulars (all eight files) and Seculars (all but `.LAY`, plus `Stopword.lst` and `Synonym.lst`) databases behind Virginia Davis, *Clergy in the Late Middle Ages* (CMH, 2000). Other versions of Idealist may differ. Both the viewer (`index.html`) and the decoder (`tools/idealist_decode.py`) implement what is described here.
 
-**Contents:** [Overview](#overview) · [`.TEX`](#tex-records) · [Field ids](#field-ids) · [`.DEF`](#def-definition-files) · [`.LAY`](#lay-layout-files) · [`.CMD`](#cmd-command-files) · [Index files](#index-files) · [Open questions](#open-questions)
+**Contents:** [Overview](#overview) · [`.TEX`](#tex-records) · [Field ids](#field-ids) · [`.DEF`](#def-definition-files) · [`.LAY`](#lay-layout-files) · [`.CMD`](#cmd-command-files) · [`.LST`](#lst-stop-word-and-synonym-lists) · [Index files](#index-files) · [Open questions](#open-questions)
 
 ## Overview
 
@@ -14,6 +14,8 @@ An Idealist database is a set of files sharing one base name. Extensions may be 
 | `.DEF` | Text | Record types, field names and field definitions. May be one shared `IDEALIST.DEF` instead of one per database. | Only for field names |
 | `.LAY` | Text | Data-entry form layout: field labels and positions | Only for form labels |
 | `.CMD` | Text | Commands run when the database opens | No |
+| `Stopword.lst` | Text | Stop words; copied into the `.TEX` header | No |
+| `Synonym.lst` | Text | Synonym groups for searching | No |
 | `.ROT` | Binary | Record handle → `.TEX` offset | No |
 | `.TRM` | Binary | Term (word) index, in 4 KB pages | No |
 | `.DIR` | Binary | Directory into the `.TRM` pages | No |
@@ -30,7 +32,8 @@ All binary integers are little-endian unless stated otherwise. Text files use Wi
 | 0 | 4 | Magic `iWin` |
 | 6 | 2 | `0x04E4` (1252) in Regulars; probably the Windows code page |
 | 8 | 6 | Date stamp (text, NUL-padded), e.g. `Jan95` |
-| 64 | varies | Stop-word list: words left out of the index, separated by CRLF (blank lines separate initial letters) |
+| 46 | 2 | Length of the stop-word list (587 in Regulars and Seculars) |
+| 64 | varies | Stop-word list: a copy of `Stopword.lst` (see [`.LST`](#lst-stop-word-and-synonym-lists)) |
 
 The other header bytes are not understood (see [Open questions](#open-questions)).
 
@@ -201,33 +204,49 @@ Plain text holding Idealist commands, apparently run when the database is opened
 SearchFindAllRecords()
 ```
 
-It has no bearing on the data.
+It has no bearing on the data. `Seculars.cmd` is identical.
+
+## `.LST`: stop-word and synonym lists
+
+Seen with Seculars. Both are plain text with CRLF line endings and fixed names rather than the database's base name.
+
+**`Stopword.lst`** lists the words left out of the index, one or more per line (`can cannot`), with blank lines between initial letters. The `.TEX` header holds a byte-for-byte copy of it: in Seculars, the 587 bytes from offset 64 to the first record at 651 are identical to `Stopword.lst`, and 587 is the `u16` at header offset 46. Regulars has the same 587-byte list.
+
+**`Synonym.lst`** holds one synonym group per line: a quoted head term followed by its synonyms, quoting any that contain spaces:
+
+```
+"bbc" "british broadcasting corporation"
+"centre" center
+gray grey
+```
+
+The Seculars copy is evidently Blackwell's generic sample list (BBC, Blackwell Science, colours, Düsseldorf), not specific to the database. It has no bearing on the records.
 
 ## Index files
 
-These four files make up Idealist's full-text index. They can be rebuilt from the `.TEX` file, and neither tool reads them; the viewer searches the decoded text directly. What has been established, from Regulars:
+These four files make up Idealist's full-text index. They can be rebuilt from the `.TEX` file, and neither tool reads them; the viewer searches the decoded text directly. What has been established, from Regulars and Seculars:
 
 ### `.ROT`: record table
 
 An array of `u32` offsets into the `.TEX` file, indexed by record handle. Unused handles are `0`.
 
-`Regulars.rot` is 45,056 bytes = 11,264 slots. Its 10,717 non-zero entries are exactly the offsets of the 10,717 current records; superseded copies are not listed. Entries are not in file order; how handles are allocated is not known.
+`Regulars.rot` is 45,056 bytes = 11,264 slots. Its 10,717 non-zero entries are exactly the offsets of the 10,717 current records; superseded copies are not listed. `Seculars.rot` likewise has 20,480 slots, of which 20,246 hold exactly its current records. Entries are not in file order; how handles are allocated is not known.
 
 ### `.TRM`: term index
 
-Fixed 4,096-byte pages (`Regulars.trm` is 96 pages). Page 0 is a header (`00 20 08 00 …`). The other pages begin with a short header and hold packed term entries; the term text is not stored as plain strings, so the encoding is not yet decoded. Earlier notes describe the pages as a B-tree of *term + field id* keys.
+Fixed 4,096-byte pages (`Regulars.trm` is 96 pages, `Seculars.trm` 216). Page 0 is a header (`00 20 08 00 …` in Regulars, `00 20 0a 00 …` in Seculars). The other pages begin with a short header and hold packed term entries; the term text is not stored as plain strings, so the encoding is not yet decoded. Earlier notes describe the pages as a B-tree of *term + field id* keys.
 
 ### `.DIR`: term directory
 
-An array of `u16` values. In `Regulars.dir` (1,036 bytes = 518 values), the first 512 are page numbers into the `.TRM` file (1–47). Runs of repeated values suggest several hash or prefix slots share one page, as in an extendible-hashing directory. The last 6 values (`15 15 5 6 7 8`) are not understood.
+An array of `u16` values: a variable number of slots, then 6 trailing values. In `Regulars.dir` (518 values) there are 512 slots holding page numbers into the `.TRM` file (1–47), then `15 15 5 6 7 8`. In `Seculars.dir` (1,286 values) there are 1,280 slots (page numbers 2–107), then `13 13 5 6 7 8`. Runs of repeated values suggest several hash or prefix slots share one page, as in an extendible-hashing directory. The trailing values are not understood.
 
 ### `.OCC`: occurrence lists
 
-A chain of blocks, each starting with its total size as a `u32`. Walking the sizes covers `Regulars.occ` exactly (6,679 blocks). Block sizes follow the series 32, 80, 176, 368, 752, 1520, 3056, 6128 (each is twice the previous plus 16), so a list that outgrows its block is presumably moved to the next size up. Bytes 4–5 of a block hold a `u16` (likely a count) and bytes 6–7 are usually `0x8000` (6,556 of 6,679 blocks); the rest appears to be compressed record references.
+A chain of blocks, each starting with its total size as a `u32`. Walking the sizes covers `Regulars.occ` exactly (6,679 blocks), and `Seculars.occ` too (14,661 blocks). Block sizes follow the series 32, 80, 176, 368, 752, 1520, 3056, 6128, 12272 (each is twice the previous plus 16), so a list that outgrows its block is presumably moved to the next size up. Bytes 4–5 of a block hold a `u16` (likely a count) and bytes 6–7 are usually `0x8000` (6,556 of 6,679 blocks); the rest appears to be compressed record references.
 
 ## Open questions
 
-- `.TEX` header bytes other than the magic, the `0x04E4` word and the date. In Regulars: `u32 0x2E1A7851` at offset 26, `u16 0x024B` (587) at 46, `u16 0x028C` (652) at 54 and `u16 0x01D2` (466) at 56. The first record starts at 651.
+- `.TEX` header bytes other than the magic, the `0x04E4` word, the date and the stop-list length. In both Regulars and Seculars: `u16 0x028C` (652) at 54 and `u16 0x01D2` (466) at 56; the first record starts at 651 (64 + 587). They differ in the `u32` at offset 26 (`0x2E1A7851` and `0xB8055DCB`), the `u16` at 58 (3 and 1) and the 4 bytes at 60.
 - The `D` (date) and `N` (name) field types: their codes and storage have not been seen in a `.TEX` file.
 - The entry encoding in `.TRM` pages and `.OCC` blocks, the `.OCC` block header, and the trailing values in `.DIR`.
 - How `.ROT` record handles are allocated.

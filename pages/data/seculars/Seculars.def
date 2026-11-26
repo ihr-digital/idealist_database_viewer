@@ -1,0 +1,23 @@
+[records]
+Default Text
+Move Surname Forename Diocese Homeplace Ordained Worddate Titlecode Title Original Footnotes Personid Education Year Reference Ceremony Place Ordainer 
+
+[fields]
+Ceremony Font="Courier" Points=10 Type="Number"
+Diocese Font="Courier" Points=10 Type="Text"
+Education Font="Courier" Points=10 Type="Text"
+Footnotes Font="Courier" Points=10 Type="Text"
+Forename Font="Courier" Points=10 Type="Text"
+Homeplace Font="Courier" Points=10 Type="Text"
+Ordained Font="Courier" Points=10 Type="Text"
+Ordainer Font="Courier" Points=10 Type="Text"
+Original Font="Courier" Points=10 Type="Text"
+Personid Font="Courier" Points=10 Type="Number"
+Place Font="Courier" Points=10 Type="Text"
+Reference Font="Courier" Points=10 Type="Text"
+Surname Font="Courier" Points=10 Type="Text"
+Text Font="Courier" Points=10 Type="Text"
+Title Font="Courier" Points=10 Type="Text"
+Titlecode Font="Courier" Points=10 Type="Number"
+Worddate Font="Courier" Points=10 Type="Text"
+Year Font="Courier" Points=10 Type="Number"

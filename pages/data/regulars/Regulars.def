@@ -1,0 +1,20 @@
+[records]
+Default Text
+Monks Forename Surname O_Level Worddate House Rel_Order Diocese Personid Place Ord_Bp Ceremony Ref Year Footnotes 
+
+[fields]
+Ceremony Font="Courier" Points=10 Type="Number"
+Diocese Font="Courier" Points=10 Type="Text"
+Footnotes Font="Courier" Points=10 Type="Wrapped text"
+Forename Font="Courier New" MaxChars=20 Points=12 Type="Text"
+House Font="Courier" Points=10 Type="Text"
+O_Level Font="Courier" Points=10 Type="Text"
+Ord_Bp Font="Courier" Points=10 Type="Wrapped text"
+Personid Font="Courier" Points=10 Type="Number"
+Place Font="Courier" Points=10 Type="Wrapped text"
+Ref Font="Courier" Points=10 Type="Text"
+Rel_Order Font="Courier" Points=10 Type="Text"
+Surname Font="Courier" Points=10 Type="Text"
+Text Font="Courier" Points=10 Type="Text"
+Worddate Font="Courier" Points=10 Type="Text"
+Year Font="Courier" Points=10 Type="Number"

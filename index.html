@@ -14,7 +14,12 @@
 *{box-sizing:border-box;min-width:0}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "IBM Plex Sans",system-ui,sans-serif;overflow-x:clip}
 h1,h2,h3{font-family:Spectral,Georgia,serif;line-height:1.08;text-wrap:balance;margin:0}
-h1{font-size:clamp(32px,4.2vw,48px)}h2{font-size:28px}h3{font-size:20px}
+h1{font-size:clamp(32px,4.2vw,48px)}
+h1.cite{font-size:clamp(21px,2.5vw,30px);line-height:1.2;max-width:44ch}
+.dbswitch{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+.dbswitch button{display:flex;flex-direction:column;align-items:flex-start;text-align:left;line-height:1.25;padding:8px 14px;min-height:0}
+.dbswitch button small{font-weight:400;opacity:.8;font-size:12px}
+.top .dbswitch button[aria-pressed=true]{background:var(--bandink);color:var(--band);border-color:var(--bandink)}h2{font-size:28px}h3{font-size:20px}
 a{color:var(--red)}code,.id{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.88em}
 .band{padding:clamp(22px,3.2vw,48px) max(5vw,16px)}
 .wrap{max-width:1240px;margin:auto}
@@ -155,6 +160,9 @@ const TNAME={W:'wrapped text',T:'text',D:'date',N:'name',L:'line of text','#':'n
 const KNOWN=new Proxy({},{get:(_,k)=>TCLASS[String.fromCharCode(+k&0xff)]});
 const tname=typ=>TNAME[String.fromCharCode(typ&0xff)]||h4(typ);
 const dec=new TextDecoder('windows-1252');
+// A published collection (see tools/build_site.py) embeds <script type="application/json" id="collection"> listing databases to fetch.
+const COL=(()=>{try{const el=document.getElementById('collection');return el?JSON.parse(el.textContent):null}catch(e){return null}})();
+let CUR=null;
 const store={get(k,d){try{const v=localStorage.getItem('idl:'+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem('idl:'+k,JSON.stringify(v))}catch(e){}}};
 
 /* ---------- definition file (IDEALIST.DEF) ---------- */
@@ -169,7 +177,8 @@ function parseDEF(txt,name){const def={name,types:{},fields:{}};let sec='';
   return Object.keys(def.types).length?def:null}
 const BUILT=parseDEF(BUILTIN_DEF,'IDEALIST.DEF (built in, CMH project)');
 let DEFS=(store.get('defs',[])||[]).map(x=>parseDEF(x.text,x.name)).filter(Boolean);
-const allDefs=()=>[...DEFS.slice().reverse(),BUILT];
+let COLDEFS=[],COLLAYS=[]; // definition and layout files that come with a published collection (not saved in the browser)
+const allDefs=()=>[...DEFS.slice().reverse(),...COLDEFS,BUILT];
 
 /* ---------- layout file (.LAY) ---------- */
 // The data-entry form. ":Type" starts a record type. Indented lines are either "Label" x y w h [attributes] (static text)
@@ -180,7 +189,7 @@ function parseLAY(txt,name){const lay={name,types:{}};let cur=null,last='';
     if(m[1]!==undefined){const l=m[1].trim().replace(/\s*:$/,'');if(l)last=l}else{cur[m[2].trim()]=last;last=''}}
   return Object.keys(lay.types).length?lay:null}
 let LAYS=(store.get('lays',[])||[]).map(x=>parseLAY(x.text,x.name)).filter(Boolean);
-const allLays=()=>LAYS.slice().reverse();
+const allLays=()=>[...LAYS.slice().reverse(),...COLLAYS];
 const remember=(key,list,obj,name,txt)=>{const st=(store.get(key,[])||[]).filter(x=>x.name!==name);st.push({name,text:txt});store.set(key,st);return [...list.filter(x=>x.name!==name),obj]};
 const defDesc=a=>!a?'':[a.Type,a.MaxChars&&'max '+a.MaxChars+' chars',a.Format&&'format “'+a.Format+'”',a.Uppercase&&'upper case',a.InitialCaps&&'initial caps',a.Mandatory&&'mandatory'].filter(Boolean).join(' · ');
 
@@ -245,7 +254,7 @@ function open(buf,name){
   $('dt').innerHTML=dts.map(d=>`<option>${esc(d)}</option>`).join('');$('dt').classList.toggle('hidden',dts.length<2);
   const cur=DB.recs.filter(r=>r.cur).length;
   $('stats').innerHTML=[[cur,'current records'],[DB.recs.length-cur,'superseded copies'],[dts.length,'document type'+(dts.length>1?'s':'')]].map(([b,s])=>`<div><b>${b}</b><span>${s}</span></div>`).join('')+`<div><b id="nf"></b><span>fields</span></div>`;
-  $('title').textContent=name;$('sub').textContent=`${(DB.size/1024).toFixed(0)} KB · created ${DB.head.date||'date unknown'} · document type ${dts.join(', ')}`;
+  if(!COL)$('title').textContent=name;$('sub').textContent=`${COL&&CUR?CUR.label+' · '+name+' · ':''}${(DB.size/1024).toFixed(0)} KB · created ${DB.head.date||'date unknown'} · document type ${dts.join(', ')}`;
   $('loaded').classList.remove('hidden');
   setDT(dts.sort((a,b)=>DB.recs.filter(r=>r.doctype===b).length-DB.recs.filter(r=>r.doctype===a).length)[0]);
   if(!location.hash||location.hash==='#landing')location.hash='browse';else route();
@@ -383,6 +392,35 @@ $('scope').onchange=refresh;$('sort').onchange=refresh;$('old').onchange=refresh
 $('chips').addEventListener('click',e=>{const b=e.target.closest('[data-x]');if(b){FILTERS.splice(+b.dataset.x,1);refresh()}});
 $('list').addEventListener('click',e=>{const b=e.target.closest('.item');if(!b)return;sel=DB.recs[+b.dataset.i];view=null;document.querySelectorAll('.item').forEach(x=>x.setAttribute('aria-current',x===b));showRec();if(window.innerWidth<=900)$('rec').scrollIntoView({behavior:'smooth'})});
 $('list').addEventListener('keydown',e=>{if(!['ArrowDown','ArrowUp'].includes(e.key)||!sel)return;e.preventDefault();const r=ROWS[ROWS.indexOf(sel)+(e.key==='ArrowDown'?1:-1)];if(!r)return;sel=r;view=null;refresh();const b=$('list').querySelector(`[data-i="${r.i}"]`);b&&(b.focus(),b.scrollIntoView({block:'nearest'}))});
+/* ---------- collection mode ---------- */
+if(COL){
+  const cache=new Map();
+  document.title=COL.short||COL.title;$('title').textContent=COL.title;$('title').classList.add('cite');
+  if(COL.subtitle)$('sub').textContent=COL.subtitle;
+  $('openbtn').classList.add('hidden');
+  const sw=document.createElement('div');sw.className='dbswitch';sw.setAttribute('role','group');sw.setAttribute('aria-label','Database');
+  sw.innerHTML=COL.databases.map(d=>`<button data-db="${esc(d.id)}" aria-pressed="false">${esc(d.label)}${d.description?`<small>${esc(d.description)}</small>`:''}</button>`).join('');
+  document.querySelector('.tophead > div').appendChild(sw);
+  $('v-landing').querySelector('.landing').innerHTML='<h2 id="colmsg">Loading…</h2><p class="mute" id="colnote">The database is read in your browser. The first load downloads it, which can take a few seconds.</p>';
+  const getText=async u=>{const r=await fetch(u);if(!r.ok)throw new Error(u+': '+r.status);return r.text()};
+  async function getTex(d){
+    if(d.gz&&'DecompressionStream' in window){try{const r=await fetch(d.gz);if(r.ok)return await new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer()}catch(e){}}
+    const r=await fetch(d.tex);if(!r.ok)throw new Error(d.tex+': '+r.status);return r.arrayBuffer()}
+  async function load(id){
+    const d=COL.databases.find(x=>x.id===id)||COL.databases[0];
+    sw.querySelectorAll('button').forEach(b=>{b.setAttribute('aria-pressed',b.dataset.db===d.id);b.disabled=true});
+    if(!DB)$('colmsg').textContent='Loading '+d.label+'…';else toast('Loading '+d.label+'…');
+    try{
+      if(!cache.has(d.id)){const [tex,def,lay]=await Promise.all([getTex(d),d.def?getText(d.def):null,d.lay?getText(d.lay):null]);cache.set(d.id,{tex,def,lay})}
+      const c=cache.get(d.id),file=d.tex.split('/').pop();
+      COLDEFS=c.def?[parseDEF(c.def,d.def.split('/').pop())].filter(Boolean):[];COLLAYS=c.lay?[parseLAY(c.lay,d.lay.split('/').pop())].filter(Boolean):[];
+      CUR=d;$('q').value='';open(c.tex.slice(0),file);
+      const u=new URL(location.href);u.searchParams.set('db',d.id);history.replaceState(null,'',u);
+    }catch(e){if(!DB){$('colmsg').textContent='Could not load '+d.label;$('colnote').textContent=String(e.message||e)}else toast('Could not load '+d.label)}
+    sw.querySelectorAll('button').forEach(b=>b.disabled=false)}
+  sw.addEventListener('click',e=>{const b=e.target.closest('[data-db]');if(b&&b.dataset.db!==CUR?.id)load(b.dataset.db)});
+  load(new URLSearchParams(location.search).get('db'));
+}
 route();
 }
 </script></body></html>
